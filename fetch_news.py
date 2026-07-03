@@ -54,6 +54,17 @@ TOPICS = {
             gnews("밀리미터파 레이더 생체신호", lang="ko", country="KR"),
         ],
     },
+    "autonomous_driving": {
+        "label": "자율주행 (Autonomous Driving)",
+        "feeds": [
+            gnews('"autonomous driving" news'),
+            gnews('"self-driving" car 2026'),
+            gnews('"autonomous vehicle" ADAS'),
+            gnews("자율주행 뉴스", lang="ko", country="KR"),
+            gnews("자율주행차 ADAS", lang="ko", country="KR"),
+            gnews("자율주행 상용화", lang="ko", country="KR"),
+        ],
+    },
 }
 
 HEADERS = {
