@@ -3,15 +3,6 @@
 """
 이미징 레이더 / 60GHz 헬스케어 레이더 뉴스 자동 수집 + HTML 생성 스크립트
 【완전 무료 버전 - API 키 불필요】
-
-동작 방식:
-1. Google News RSS 피드에서 주제별 키워드로 최근 기사를 수집
-2. 중복 기사 제거 (URL 해시 기반)
-3. RSS의 description 필드를 요약으로 그대로 사용 (API 비용 없음)
-4. docs/index.html 정적 페이지 생성 (GitHub Pages가 이 폴더를 호스팅)
-5. data/seen_articles.json 에 기록 누적 저장 (중복 방지용)
-
-필요한 것: GitHub 계정만 있으면 됨 (API 키, 비용 없음)
 """
 
 import json
@@ -25,26 +16,21 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DATA_DIR  = Path("data")
-DOCS_DIR  = Path("docs")
+DATA_DIR     = Path("data")
+DOCS_DIR     = Path("docs")
 HISTORY_FILE = DATA_DIR / "seen_articles.json"
-MAX_ARTICLES_PER_TOPIC = 15
 
-# -------------------------------------------------------
-# Google News RSS URL 생성 헬퍼
-# 한글 키워드도 자동으로 URL 인코딩 처리
-# -------------------------------------------------------
+MAX_NEW_ARTICLES     = 15   # 오늘 신규 기사 최대 표시 수
+MAX_RECENT_ARTICLES  = 5    # 신규 없을 때 최근 기사 표시 수
+RECENT_DAYS_KEEP     = 7    # seen 기록을 며칠간 유지할지 (이 기간 지난 기사는 재표시 가능)
+
+
 def gnews(query, lang="en", country="US"):
     q = urllib.parse.quote(query)
     ceid = f"{country}:{lang}"
-    return (
-        f"https://news.google.com/rss/search"
-        f"?q={q}&hl={lang}&gl={country}&ceid={ceid}"
-    )
+    return f"https://news.google.com/rss/search?q={q}&hl={lang}&gl={country}&ceid={ceid}"
 
-# -------------------------------------------------------
-# 주제별 RSS 피드 목록
-# -------------------------------------------------------
+
 TOPICS = {
     "imaging_radar": {
         "label": "이미징 레이더 (자동차 · 산업 · 로봇)",
@@ -70,7 +56,6 @@ TOPICS = {
     },
 }
 
-# Google News는 브라우저 User-Agent가 없으면 403 반환
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -82,20 +67,27 @@ HEADERS = {
 
 
 # -------------------------------------------------------
-# 유틸리티
+# seen 기록: {url_hash: "YYYY-MM-DD"} 형태로 날짜도 저장
+# 7일 지난 항목은 자동 삭제 → 오래된 기사도 다시 표시 가능
 # -------------------------------------------------------
 
-def load_seen_ids():
+def load_seen():
     if HISTORY_FILE.exists():
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
+            data = json.load(f)
+        # 구버전 호환 (리스트 형태였던 경우 → 빈 dict로 초기화)
+        if isinstance(data, list):
+            return {}
+        return data
+    return {}
 
 
-def save_seen_ids(seen_ids):
+def save_seen(seen):
+    cutoff = (datetime.date.today() - datetime.timedelta(days=RECENT_DAYS_KEEP)).isoformat()
+    pruned = {k: v for k, v in seen.items() if v >= cutoff}
     DATA_DIR.mkdir(exist_ok=True)
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(sorted(seen_ids), f, ensure_ascii=False, indent=2)
+        json.dump(pruned, f, ensure_ascii=False, indent=2)
 
 
 def make_id(url):
@@ -103,7 +95,6 @@ def make_id(url):
 
 
 def clean_html(text):
-    """RSS description에 섞인 HTML 태그 및 엔티티 제거"""
     if not text:
         return ""
     text = re.sub(r"<[^>]+>", " ", text)
@@ -113,43 +104,23 @@ def clean_html(text):
 
 
 def clean_description(desc, title, source):
-    """
-    Google News RSS description 정제:
-    - 제목 반복 텍스트 제거
-    - 출처명 반복 제거
-    - 의미 없는 짧은 잔여 텍스트 제거
-    """
     if not desc:
         return ""
-
     text = desc
-
-    # 1) "제목 - 출처명" 또는 "제목 출처명" 패턴 제거 (Google News 특유)
-    #    예: "인피니언, 8Tx8Rx 이미징 레이더 MMIC 양산 개시 - e4ds news"
     if title:
-        # 제목의 앞 30자 기준으로 시작 부분이 반복되면 제거
         title_prefix = re.escape(title[:30])
         text = re.sub(rf"^{title_prefix}.*", "", text, flags=re.DOTALL).strip()
-
-    # 2) 출처명이 단독으로 끝에 붙는 경우 제거
-    #    예: "...내용... 뉴스와이어"
     if source:
         src_escaped = re.escape(source.strip())
         text = re.sub(rf"\s*{src_escaped}\s*$", "", text, flags=re.IGNORECASE).strip()
-
-    # 3) 남은 텍스트가 너무 짧거나(20자 미만) 제목과 거의 같으면 빈 문자열 반환
     if len(text) < 20:
         return ""
-
-    # 4) 너무 길면 200자로 자르고 말줄임표
     if len(text) > 200:
         text = text[:200].rsplit(" ", 1)[0] + "…"
-
     return text
 
 
 def parse_pubdate(pubdate_str):
-    """RFC 2822 날짜 → YYYY-MM-DD"""
     try:
         from email.utils import parsedate
         t = parsedate(pubdate_str)
@@ -161,7 +132,6 @@ def parse_pubdate(pubdate_str):
 
 
 def fetch_rss(url):
-    """RSS URL을 가져와서 기사 목록으로 파싱"""
     req = urllib.request.Request(url, headers=HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
@@ -169,7 +139,6 @@ def fetch_rss(url):
     except Exception as e:
         print(f"    [경고] 가져오기 실패: {e}")
         return []
-
     try:
         root = ET.fromstring(content)
     except ET.ParseError as e:
@@ -179,65 +148,58 @@ def fetch_rss(url):
     articles = []
     for item in root.findall(".//item"):
         get = lambda tag: (item.find(tag).text or "") if item.find(tag) is not None else ""
-
         title   = clean_html(get("title"))
         link    = get("link").strip()
         desc    = clean_html(get("description"))
         pubdate = get("pubDate")
         source  = get("source")
-
         if not title or not link:
             continue
-
-        summary = clean_description(desc, title, source)
-
         articles.append({
             "title":     title,
             "url":       link,
             "source":    source,
             "published": parse_pubdate(pubdate),
-            "summary":   summary,
+            "summary":   clean_description(desc, title, source),
         })
-
     return articles
 
 
-# -------------------------------------------------------
-# HTML 생성
-# -------------------------------------------------------
-
-def build_html(topic_results, generated_at):
-    sections_html = ""
-    for topic_key, info in TOPICS.items():
-        articles = topic_results.get(topic_key, [])
-        sections_html += f'<h2 class="topic-title">{info["label"]}</h2>\n'
-        if not articles:
-            sections_html += '<p class="empty">오늘은 새로운 기사가 없습니다.</p>\n'
-            continue
-        for art in articles:
-            title   = art["title"].replace("<","&lt;").replace(">","&gt;")
-            source  = art.get("source", "")
-            pub     = art.get("published", "")
-            summary = art.get("summary", "")
-            url     = art["url"]
-
-            # 출처 · 날짜 메타 줄
-            meta = "&nbsp;·&nbsp;".join(filter(None, [source, pub]))
-
-            # 요약이 있을 때만 표시
-            summary_html = (
-                f'<p class="card-summary">{summary}</p>'
-                if summary else ""
-            )
-
-            sections_html += f"""
+def card_html(art):
+    title   = art["title"].replace("<","&lt;").replace(">","&gt;")
+    source  = art.get("source", "")
+    pub     = art.get("published", "")
+    summary = art.get("summary", "")
+    url     = art["url"]
+    meta    = "&nbsp;·&nbsp;".join(filter(None, [source, pub]))
+    summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
+    return f"""
 <div class="card">
   <div class="card-meta">{meta}</div>
   <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
   {summary_html}
   <a class="card-link" href="{url}" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-"""
+</div>"""
+
+
+def build_html(new_results, all_results, generated_at):
+    sections_html = ""
+    for topic_key, info in TOPICS.items():
+        new_arts    = new_results.get(topic_key, [])
+        all_arts    = all_results.get(topic_key, [])
+        recent_arts = [a for a in all_arts if a not in new_arts][:MAX_RECENT_ARTICLES]
+
+        sections_html += f'<h2 class="topic-title">{info["label"]}</h2>\n'
+
+        if new_arts:
+            for art in new_arts:
+                sections_html += card_html(art)
+        else:
+            sections_html += '<p class="empty">오늘은 새로운 기사가 없습니다.</p>\n'
+            if recent_arts:
+                sections_html += '<p class="recent-label">📋 최근 기사</p>\n'
+                for art in recent_arts:
+                    sections_html += card_html(art)
 
     page = f"""<!DOCTYPE html>
 <html lang="ko">
@@ -270,7 +232,11 @@ def build_html(topic_results, generated_at):
   .card-title a:hover {{ text-decoration: underline; }}
   .card-summary {{ font-size: 14px; color: #333; margin: 0 0 8px; }}
   .card-link {{ font-size: 13px; color: #2563eb; text-decoration: none; }}
-  .empty {{ color: #999; font-size: 14px; }}
+  .empty {{ color: #999; font-size: 14px; margin-bottom: 8px; }}
+  .recent-label {{
+    font-size: 13px; color: #555; font-weight: 600;
+    margin: 16px 0 10px; padding-left: 4px;
+  }}
 </style>
 </head>
 <body>
@@ -286,46 +252,53 @@ def build_html(topic_results, generated_at):
     (DOCS_DIR / "index.html").write_text(page, encoding="utf-8")
 
 
-# -------------------------------------------------------
-# 메인
-# -------------------------------------------------------
-
 def main():
-    seen_ids     = load_seen_ids()
-    new_seen_ids = set(seen_ids)
-    topic_results = {}
+    seen         = load_seen()
+    new_seen     = dict(seen)
+    today        = datetime.date.today().isoformat()
+
+    new_results  = {}   # 오늘 새로 수집된 기사
+    all_results  = {}   # 새 기사 + 최근 기사 (최근 기사 fallback용)
 
     for topic_key, info in TOPICS.items():
         print(f"\n=== {info['label']} ===")
-        collected = []
-        seen_urls_this_run = set()
+        new_arts   = []
+        all_arts   = []
+        seen_urls  = set()
 
         for feed_url in info["feeds"]:
             print(f"  피드: {feed_url[:90]}...")
             items = fetch_rss(feed_url)
             print(f"  → {len(items)}건 수신")
-            time.sleep(1)   # Google News 요청 간격
+            time.sleep(1)
 
             for art in items:
                 uid = make_id(art["url"])
-                if uid in seen_ids:
-                    continue
-                if art["url"] in seen_urls_this_run:
+                if art["url"] in seen_urls:
                     continue
                 if not art["title"] or art["title"] == "[Removed]":
                     continue
+                seen_urls.add(art["url"])
 
-                seen_urls_this_run.add(art["url"])
-                new_seen_ids.add(uid)
-                collected.append(art)
+                # 전체 목록에는 중복 없이 추가 (최근 기사 표시용)
+                all_arts.append(art)
 
-        collected.sort(key=lambda a: a["published"], reverse=True)
-        topic_results[topic_key] = collected[:MAX_ARTICLES_PER_TOPIC]
-        print(f"  → 신규 기사 {len(topic_results[topic_key])}건 채택")
+                # 신규 기사 판별
+                if uid not in seen:
+                    new_seen[uid] = today
+                    new_arts.append(art)
+
+        all_arts.sort(key=lambda a: a["published"], reverse=True)
+        new_arts.sort(key=lambda a: a["published"], reverse=True)
+
+        new_results[topic_key] = new_arts[:MAX_NEW_ARTICLES]
+        all_results[topic_key] = all_arts
+
+        print(f"  → 신규 {len(new_results[topic_key])}건 / 전체 {len(all_arts)}건")
 
     generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M KST")
-    build_html(topic_results, generated_at)
-    save_seen_ids(new_seen_ids)
+    build_html(new_results, all_results, generated_at)
+    save_seen(new_seen)
     print("\n완료: docs/index.html 생성됨")
 
 
