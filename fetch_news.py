@@ -213,6 +213,10 @@ def build_html(new_results, all_results, generated_at):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>레이더 기술 뉴스 트래커</title>
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="레이더 뉴스">
 <style>
   body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -288,6 +292,12 @@ def main():
 
                 # 전체 목록에는 중복 없이 추가 (최근 기사 표시용)
                 all_arts.append(art)
+
+                # 날짜 필터: 최근 30일 이내 기사만 허용
+                if art["published"]:
+                    cutoff = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+                    if art["published"] < cutoff:
+                        continue
 
                 # 신규 기사 판별
                 if uid not in seen:
