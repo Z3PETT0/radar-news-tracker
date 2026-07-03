@@ -1,228 +1,316 @@
-<!DOCTYPE html>
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+이미징 레이더 / 60GHz 헬스케어 레이더 뉴스 자동 수집 + HTML 생성 스크립트
+【완전 무료 버전 - API 키 불필요】
+"""
+
+import json
+import datetime
+import hashlib
+import html as html_mod
+import re
+import time
+import urllib.request
+import urllib.parse
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+DATA_DIR     = Path("data")
+DOCS_DIR     = Path("docs")
+HISTORY_FILE = DATA_DIR / "seen_articles.json"
+
+MAX_NEW_ARTICLES     = 15   # 오늘 신규 기사 최대 표시 수
+MAX_RECENT_ARTICLES  = 5    # 신규 없을 때 최근 기사 표시 수
+RECENT_DAYS_KEEP     = 7    # seen 기록을 며칠간 유지할지 (이 기간 지난 기사는 재표시 가능)
+
+
+def gnews(query, lang="en", country="US"):
+    q = urllib.parse.quote(query)
+    ceid = f"{country}:{lang}"
+    return f"https://news.google.com/rss/search?q={q}&hl={lang}&gl={country}&ceid={ceid}"
+
+
+TOPICS = {
+    "imaging_radar": {
+        "label": "이미징 레이더 (자동차 · 산업 · 로봇)",
+        "feeds": [
+            gnews('"imaging radar" automotive'),
+            gnews('"4D radar" autonomous driving'),
+            gnews('"imaging radar" robotics'),
+            gnews('"imaging radar" industrial'),
+            gnews("이미징 레이더", lang="ko", country="KR"),
+            gnews("4D 레이더 자율주행", lang="ko", country="KR"),
+        ],
+    },
+    "60ghz_healthcare": {
+        "label": "60GHz 레이더 헬스케어",
+        "feeds": [
+            gnews('"60GHz radar" health'),
+            gnews('"mmWave radar" patient monitoring'),
+            gnews('"60GHz radar" vital sign'),
+            gnews('"contactless radar" healthcare'),
+            gnews("60GHz 레이더 헬스케어", lang="ko", country="KR"),
+            gnews("밀리미터파 레이더 생체신호", lang="ko", country="KR"),
+        ],
+    },
+}
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
+
+# -------------------------------------------------------
+# seen 기록: {url_hash: "YYYY-MM-DD"} 형태로 날짜도 저장
+# 7일 지난 항목은 자동 삭제 → 오래된 기사도 다시 표시 가능
+# -------------------------------------------------------
+
+def load_seen():
+    if HISTORY_FILE.exists():
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # 구버전 호환 (리스트 형태였던 경우 → 빈 dict로 초기화)
+        if isinstance(data, list):
+            return {}
+        return data
+    return {}
+
+
+def save_seen(seen):
+    cutoff = (datetime.date.today() - datetime.timedelta(days=RECENT_DAYS_KEEP)).isoformat()
+    pruned = {k: v for k, v in seen.items() if v >= cutoff}
+    DATA_DIR.mkdir(exist_ok=True)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(pruned, f, ensure_ascii=False, indent=2)
+
+
+def make_id(url):
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def clean_html(text):
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html_mod.unescape(text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def clean_description(desc, title, source):
+    if not desc:
+        return ""
+    text = desc
+    if title:
+        title_prefix = re.escape(title[:30])
+        text = re.sub(rf"^{title_prefix}.*", "", text, flags=re.DOTALL).strip()
+    if source:
+        src_escaped = re.escape(source.strip())
+        text = re.sub(rf"\s*{src_escaped}\s*$", "", text, flags=re.IGNORECASE).strip()
+    if len(text) < 20:
+        return ""
+    if len(text) > 200:
+        text = text[:200].rsplit(" ", 1)[0] + "…"
+    return text
+
+
+def parse_pubdate(pubdate_str):
+    try:
+        from email.utils import parsedate
+        t = parsedate(pubdate_str)
+        if t:
+            return f"{t[0]:04d}-{t[1]:02d}-{t[2]:02d}"
+    except Exception:
+        pass
+    return pubdate_str[:10] if pubdate_str else ""
+
+
+def fetch_rss(url):
+    req = urllib.request.Request(url, headers=HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            content = resp.read()
+    except Exception as e:
+        print(f"    [경고] 가져오기 실패: {e}")
+        return []
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as e:
+        print(f"    [경고] XML 파싱 실패: {e}")
+        return []
+
+    articles = []
+    for item in root.findall(".//item"):
+        get = lambda tag: (item.find(tag).text or "") if item.find(tag) is not None else ""
+        title   = clean_html(get("title"))
+        link    = get("link").strip()
+        desc    = clean_html(get("description"))
+        pubdate = get("pubDate")
+        source  = get("source")
+        if not title or not link:
+            continue
+
+        # 제목 끝의 " - 출처명" 패턴 제거 (source 태그 일치 시만, 안전)
+        if source:
+            src_escaped = re.escape(source.strip())
+            title = re.sub(rf"\s*[-–—]\s*{src_escaped}\s*$", "", title, flags=re.IGNORECASE).strip()
+
+        articles.append({
+            "title":     title,
+            "url":       link,
+            "source":    source,
+            "published": parse_pubdate(pubdate),
+            "summary":   clean_description(desc, title, source),
+        })
+    return articles
+
+
+def card_html(art):
+    title   = art["title"].replace("<","&lt;").replace(">","&gt;")
+    source  = art.get("source", "")
+    pub     = art.get("published", "")
+    summary = art.get("summary", "")
+    url     = art["url"]
+    meta    = "&nbsp;·&nbsp;".join(filter(None, [source, pub]))
+    summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
+    return f"""
+<div class="card">
+  <div class="card-meta">{meta}</div>
+  <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
+  {summary_html}
+  <a class="card-link" href="{url}" target="_blank" rel="noopener">원문 보기 →</a>
+</div>"""
+
+
+def build_html(new_results, all_results, generated_at):
+    sections_html = ""
+    for topic_key, info in TOPICS.items():
+        new_arts    = new_results.get(topic_key, [])
+        all_arts    = all_results.get(topic_key, [])
+        recent_arts = [a for a in all_arts if a not in new_arts][:MAX_RECENT_ARTICLES]
+
+        sections_html += f'<h2 class="topic-title">{info["label"]}</h2>\n'
+
+        if new_arts:
+            for art in new_arts:
+                sections_html += card_html(art)
+        else:
+            sections_html += '<p class="empty">오늘은 새로운 기사가 없습니다.</p>\n'
+            if recent_arts:
+                sections_html += '<p class="recent-label">📋 최근 기사</p>\n'
+                for art in recent_arts:
+                    sections_html += card_html(art)
+
+    page = f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>레이더 기술 뉴스 트래커</title>
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="레이더 뉴스">
 <style>
-  body {
+  body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
                  "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     max-width: 800px; margin: 0 auto;
     padding: 24px 16px 80px;
     background: #f7f7f8; color: #1a1a1a; line-height: 1.6;
-  }
-  header { margin-bottom: 32px; }
-  h1 { font-size: 24px; margin-bottom: 4px; }
-  .updated { color: #666; font-size: 14px; }
-  .topic-title {
+  }}
+  header {{ margin-bottom: 32px; }}
+  h1 {{ font-size: 24px; margin-bottom: 4px; }}
+  .updated {{ color: #666; font-size: 14px; }}
+  .topic-title {{
     font-size: 19px; margin-top: 40px; margin-bottom: 16px;
     padding-bottom: 8px; border-bottom: 2px solid #2563eb;
-  }
-  .card {
+  }}
+  .card {{
     background: #fff; border: 1px solid #e5e5e5;
     border-radius: 10px; padding: 16px 20px; margin-bottom: 14px;
-  }
-  .card-meta  { font-size: 12px; color: #888; margin-bottom: 6px; }
-  .card-title { font-size: 16px; margin: 0 0 8px; }
-  .card-title a { color: #1a1a1a; text-decoration: none; }
-  .card-title a:hover { text-decoration: underline; }
-  .card-summary { font-size: 14px; color: #333; margin: 0 0 8px; }
-  .card-link { font-size: 13px; color: #2563eb; text-decoration: none; }
-  .empty { color: #999; font-size: 14px; margin-bottom: 8px; }
-  .recent-label {
+  }}
+  .card-meta  {{ font-size: 12px; color: #888; margin-bottom: 6px; }}
+  .card-title {{ font-size: 16px; margin: 0 0 8px; }}
+  .card-title a {{ color: #1a1a1a; text-decoration: none; }}
+  .card-title a:hover {{ text-decoration: underline; }}
+  .card-summary {{ font-size: 14px; color: #333; margin: 0 0 8px; }}
+  .card-link {{ font-size: 13px; color: #2563eb; text-decoration: none; }}
+  .empty {{ color: #999; font-size: 14px; margin-bottom: 8px; }}
+  .recent-label {{
     font-size: 13px; color: #555; font-weight: 600;
     margin: 16px 0 10px; padding-left: 4px;
-  }
+  }}
 </style>
 </head>
 <body>
 <header>
   <h1>📡 레이더 기술 뉴스 트래커</h1>
-  <div class="updated">마지막 업데이트: 2026-07-03 08:17 KST (매일 자동 갱신)</div>
+  <div class="updated">마지막 업데이트: {generated_at} (매일 자동 갱신)</div>
 </header>
-<h2 class="topic-title">이미징 레이더 (자동차 · 산업 · 로봇)</h2>
-
-<div class="card">
-  <div class="card-meta">MSN&nbsp;·&nbsp;2026-07-02</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMi9AJBVV95cUxNNGJKNklDMjAtQU96M0VrUEFRSG8xTEJtRGVrTy1wSURpcG1qUFdYdVdKLS04UWxLVUFHcS1vT0hWcVcwY0cxU0kxZTdjYXhUaGoxTlZCcGRZRWFPR1NlZEZhMXdkaXlFVUhhZzR4bGMzdE55ZDJHVDlBZkVfbFEzWVgwWlBJQkNLLXRHNUk2Sk9YbEgwdzRxdjBRSXJUSmQ4ODFMeVVzWlBQbi02bHpWZ0lnQ3BpenlSanlIYzZQTF9mMWlFUWI1d1BDMC11UUNSWjNpLUtHaTZfT2FuajZlc3lBMnhFTF9oMkdrdUFKYlgzV2xnQnNnLVZNUGdNWldDN1pFUGMzZ3FWcm9jTVRqdkplRW5rT0txZGlxLURnYlJiNXg2SzQ3WWFjRkR1UHNDOWhsQmtVNnlDd2FvT3ZDVUdTcnlSNHc4LU9RUWVWS2RtOG1BTi1kN1RaRkRUX0htclJpOXpMN2t3dmxFUk96Z2Z4aVU?oc=5" target="_blank" rel="noopener">인피니언, 차세대 중앙집중형 이미징 레이더 MMIC 양산 시작</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMi9AJBVV95cUxNNGJKNklDMjAtQU96M0VrUEFRSG8xTEJtRGVrTy1wSURpcG1qUFdYdVdKLS04UWxLVUFHcS1vT0hWcVcwY0cxU0kxZTdjYXhUaGoxTlZCcGRZRWFPR1NlZEZhMXdkaXlFVUhhZzR4bGMzdE55ZDJHVDlBZkVfbFEzWVgwWlBJQkNLLXRHNUk2Sk9YbEgwdzRxdjBRSXJUSmQ4ODFMeVVzWlBQbi02bHpWZ0lnQ3BpenlSanlIYzZQTF9mMWlFUWI1d1BDMC11UUNSWjNpLUtHaTZfT2FuajZlc3lBMnhFTF9oMkdrdUFKYlgzV2xnQnNnLVZNUGdNWldDN1pFUGMzZ3FWcm9jTVRqdkplRW5rT0txZGlxLURnYlJiNXg2SzQ3WWFjRkR1UHNDOWhsQmtVNnlDd2FvT3ZDVUdTcnlSNHc4LU9RUWVWS2RtOG1BTi1kN1RaRkRUX0htclJpOXpMN2t3dmxFUk96Z2Z4aVU?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">한국데이터경제신문&nbsp;·&nbsp;2026-07-01</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMicEFVX3lxTE5ZdUI2Wl80UElqLUlDaC0tSmo4WmJ3YTRMTmNjM2lNZjlDQUd5UHppS1dHXzdRTnZPb2s3c2U4SjlzUDI3UFVLcGZlQzhBV3dSR2NKRms2ajZSVlI1bWl5S1NSVTBqZTRweEF5d0dFSXLSAXRBVV95cUxQREphSFMzZXRpekdnWlJRNndWS0NlbXBrOUtwY1p3aEpma2RqamJtTE41MTdKZUlOWG93NVdwczBoV3JkckVrb3ZxZVQ1NUN1dGFMNnhSQ1VIWVlYWW4yeVNmekh6UVYxb3ZFTXJPMkJGY3A2VA?oc=5" target="_blank" rel="noopener">인피니언, 세계 최초 8Tx8Rx 이미징 레이더 MMIC 양산… 중앙집중형 자율주행 아키텍처 가속화</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMicEFVX3lxTE5ZdUI2Wl80UElqLUlDaC0tSmo4WmJ3YTRMTmNjM2lNZjlDQUd5UHppS1dHXzdRTnZPb2s3c2U4SjlzUDI3UFVLcGZlQzhBV3dSR2NKRms2ajZSVlI1bWl5S1NSVTBqZTRweEF5d0dFSXLSAXRBVV95cUxQREphSFMzZXRpekdnWlJRNndWS0NlbXBrOUtwY1p3aEpma2RqamJtTE41MTdKZUlOWG93NVdwczBoV3JkckVrb3ZxZVQ1NUN1dGFMNnhSQ1VIWVlYWW4yeVNmekh6UVYxb3ZFTXJPMkJGY3A2VA?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Geo Week News&nbsp;·&nbsp;2026-06-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMi5gFBVV95cUxQTXdDeFhKcUVMT3pFUTBqRGhjN0dQZTRtNmUzR3hJWDI2UUtzbUR3d2lKUXVNX05meEFwTUZQZVJ0NmJlZE92TGp1bVhDaFdSZWR3Z1FtbWJaR19WVFNYZ3lvSGI4WkhiMDlKYmkzczJqWFEza09Gci1WZjZuWk84XzdhbThMSkxoV1htSWFrbkVjVXV4MjAzeXd6Snl6dDNKZUFwVnZnQWx0eTJGSUcybWJ0S2hnVVNMX2tWUy1lS0ZkbDlZajVwdDZDZlBVckhjRmlfRXRxM2h5M0h3ZS03NFJnRFQ0Zw?oc=5" target="_blank" rel="noopener">bitsensing Unveils New 4D Imaging Radar for Autonomous Vehicles, Designed to Accelerate Route To Commercialization</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMi5gFBVV95cUxQTXdDeFhKcUVMT3pFUTBqRGhjN0dQZTRtNmUzR3hJWDI2UUtzbUR3d2lKUXVNX05meEFwTUZQZVJ0NmJlZE92TGp1bVhDaFdSZWR3Z1FtbWJaR19WVFNYZ3lvSGI4WkhiMDlKYmkzczJqWFEza09Gci1WZjZuWk84XzdhbThMSkxoV1htSWFrbkVjVXV4MjAzeXd6Snl6dDNKZUFwVnZnQWx0eTJGSUcybWJ0S2hnVVNMX2tWUy1lS0ZkbDlZajVwdDZDZlBVckhjRmlfRXRxM2h5M0h3ZS03NFJnRFQ0Zw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">뉴스와이어&nbsp;·&nbsp;2026-06-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE5lUFFKMy1iTjlxS2w4VWdmTFNJUUhLRUtiTGh1d0V1YVhXTlRZcVZTMlhaVy1hYzE2djIxeW0yaWNpRFdSclA0Vkc3eEV3TFVsZE5WZWkwcVltZkd5dkRB?oc=5" target="_blank" rel="noopener">인피니언, 자동차 업계 최초 8Tx8Rx 이미징 레이더 MMIC 양산… 중앙집중형 레이더 전환 가속</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE5lUFFKMy1iTjlxS2w4VWdmTFNJUUhLRUtiTGh1d0V1YVhXTlRZcVZTMlhaVy1hYzE2djIxeW0yaWNpRFdSclA0Vkc3eEV3TFVsZE5WZWkwcVltZkd5dkRB?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">e4ds news&nbsp;·&nbsp;2026-06-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiYkFVX3lxTFB3UzdmdGFNaklackl1VXNEdFZYWGpPSENEZWU2NjBVSlJDR3lCU0IwQ212WElJZFFla19HTGlzQjBwd3VVeWxXdXFodzZ3bnQyY1h1NjVuU1BoSnpmdWh5V1BR?oc=5" target="_blank" rel="noopener">인피니언, 8Tx8Rx 이미징 레이더 MMIC 양산 개시</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiYkFVX3lxTFB3UzdmdGFNaklackl1VXNEdFZYWGpPSENEZWU2NjBVSlJDR3lCU0IwQ212WElJZFFla19HTGlzQjBwd3VVeWxXdXFodzZ3bnQyY1h1NjVuU1BoSnpmdWh5V1BR?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">elec4&nbsp;·&nbsp;2026-06-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMibkFVX3lxTE1rdzJlQkQtM3Q5dVZIYnd6STM3S3Q1Tk1LVmdZYWo4NEx2UmQxbDlNemVzMGp4cVN6MVJhOGVsRHNycmVMbmNxNXRXcUpKVHZza0dQTW5Xa21sVWFad1BJSTZUVHJnSkUtS3dfMUR3?oc=5" target="_blank" rel="noopener">인피니언, 8Tx8Rx 이미징 레이더 MMIC 양산하며 중앙집중형 레이더 전환 가속화해</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMibkFVX3lxTE1rdzJlQkQtM3Q5dVZIYnd6STM3S3Q1Tk1LVmdZYWo4NEx2UmQxbDlNemVzMGp4cVN6MVJhOGVsRHNycmVMbmNxNXRXcUpKVHZza0dQTW5Xa21sVWFad1BJSTZUVHJnSkUtS3dfMUR3?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">테크월드&nbsp;·&nbsp;2026-06-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE9tM19obzI1cDh0bGh5QUQ2eE9tUi15RE1MakN2YU1WdVFjb3NQTDE3NXV1MnZGREpNblhiR2d1dWp0ZDFUVksxVW80V0Y2Uk5HWXhPanMybnVNdGRzYndzNWhadkV2MDBE?oc=5" target="_blank" rel="noopener">인피니언, 8Tx8Rx 이미징 레이더 MMIC 양산…중앙집중형 레이더 전환 가속</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE9tM19obzI1cDh0bGh5QUQ2eE9tUi15RE1MakN2YU1WdVFjb3NQTDE3NXV1MnZGREpNblhiR2d1dWp0ZDFUVksxVW80V0Y2Uk5HWXhPanMybnVNdGRzYndzNWhadkV2MDBE?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">디지털데일리&nbsp;·&nbsp;2026-06-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZEFVX3lxTE9pb1Joc0NFaWVuLTFNV2JDQnRBckRLZGZqUzY3Y3hYbzgyM0FLdnBuRXRDNkNlOU1oRVFBSklsU2pKVHZvN2VLZ1RicmtPbUtSeDE2REZVQVR2UFdMNUduZTNEaTc?oc=5" target="_blank" rel="noopener">인피니언, 차세대 중앙집중형 이미징 레이더 MMIC 양산 시작</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiZEFVX3lxTE9pb1Joc0NFaWVuLTFNV2JDQnRBckRLZGZqUzY3Y3hYbzgyM0FLdnBuRXRDNkNlOU1oRVFBSklsU2pKVHZvN2VLZ1RicmtPbUtSeDE2REZVQVR2UFdMNUduZTNEaTc?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">아이씨엔매거진&nbsp;·&nbsp;2026-06-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiwAJBVV95cUxQaF85ci1jVy1Ld0NON1JKclgzMWtCdEVIcWpYcDNTb2V4UDhzcThWTUlsUGVXM3dHaXhCU3VvVGNBcFp5cWs5cWI4NUg5ZHN0MC13RUljREt0LWJjSW9aS3lIbWlhY3JfOVdVR0V0MW1HWkNRX0poQk1TUGJ5RV9uQ3R6b0doVVR4TllMZk5tYkNhUGRkclJDa3B3Q0E5N1BMaDJBOTdfeXA5VGZtdEFIX3hCYzhsWk5JWTNQMHJFUVQtUkpmay05ZEgxenVjYVhmTklISjNKV0FTSWtGakdDY2JWTU43QU9iMlVKUEtfYnE4UjJUemoyTXo0VkhrcWVJOVBNbWtsa2VZT01JVVN1X2NOVjNhUTJPUzdjYUNNS0VsMHVVN3QxMC1jM1lveURFd2RDZE00ZWNueGw2Qzg5bQ?oc=5" target="_blank" rel="noopener">인피니언, 자동차 업계 최초 8Tx8Rx 이미징 레이더 MMIC 양산… 중앙집중형 SDV 시대 연다</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiwAJBVV95cUxQaF85ci1jVy1Ld0NON1JKclgzMWtCdEVIcWpYcDNTb2V4UDhzcThWTUlsUGVXM3dHaXhCU3VvVGNBcFp5cWs5cWI4NUg5ZHN0MC13RUljREt0LWJjSW9aS3lIbWlhY3JfOVdVR0V0MW1HWkNRX0poQk1TUGJ5RV9uQ3R6b0doVVR4TllMZk5tYkNhUGRkclJDa3B3Q0E5N1BMaDJBOTdfeXA5VGZtdEFIX3hCYzhsWk5JWTNQMHJFUVQtUkpmay05ZEgxenVjYVhmTklISjNKV0FTSWtGakdDY2JWTU43QU9iMlVKUEtfYnE4UjJUemoyTXo0VkhrcWVJOVBNbWtsa2VZT01JVVN1X2NOVjNhUTJPUzdjYUNNS0VsMHVVN3QxMC1jM1lveURFd2RDZE00ZWNueGw2Qzg5bQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">한국일보&nbsp;·&nbsp;2026-06-26</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMibkFVX3lxTFB6eGJ5cm10S1RXeDRFZElEZ29qV3ZJcThXNXhkaHE0NGxwSE16THc1UWg4M3BIQ1BfTm5Vc29HRFdaeGVEejQtaTZILXlObGNhd3VDdUJlX0RaZklUUlR5cldzTE9odVNGbUtQWmdB0gFzQVVfeXFMTTRxRE82OHVRWkdzRUo3bU1URlJvX2NzcTE0QjVlQW1xZnFOd1FaR0sybkZGQWJTb0tpZ25QNWVyalpTU00tNm96YnVyaWZCMXByd2hUUUNqLXlZZnJROVl6Q0xYYVE5amFwZnJMenRSNlJLcw?oc=5" target="_blank" rel="noopener">'안두릴 협력기업' 김용환 SRS 대표 "美 AI '미니 데이터센터' 수주"</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMibkFVX3lxTFB6eGJ5cm10S1RXeDRFZElEZ29qV3ZJcThXNXhkaHE0NGxwSE16THc1UWg4M3BIQ1BfTm5Vc29HRFdaeGVEejQtaTZILXlObGNhd3VDdUJlX0RaZklUUlR5cldzTE9odVNGbUtQWmdB0gFzQVVfeXFMTTRxRE82OHVRWkdzRUo3bU1URlJvX2NzcTE0QjVlQW1xZnFOd1FaR0sybkZGQWJTb0tpZ25QNWVyalpTU00tNm96YnVyaWZCMXByd2hUUUNqLXlZZnJROVl6Q0xYYVE5amFwZnJMenRSNlJLcw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">eeNews Europe&nbsp;·&nbsp;2026-06-25</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMipAFBVV95cUxQbG9Hbk9lMzBjV01iNHlJV3dvOEZ1bjEzVC1ULUhHaW1Ca25PTG9fdTRPYXBjNl94R3RRWmxBWGYxdXNfbkpRRHNVQmk0R3Vldmh6aldnalplbXgxdmEwT0ZNbGl1UjI3NE1reEVJODZ2YVBNdXdGUE9qRUpVUHZHWkFSSVZ6Y1NOOFVpOUhCTFZocm5qS0tfNUJxWGtGdktaQWhXdQ?oc=5" target="_blank" rel="noopener">Infineon starts production of imaging radar MMIC for centralized ADAS</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMipAFBVV95cUxQbG9Hbk9lMzBjV01iNHlJV3dvOEZ1bjEzVC1ULUhHaW1Ca25PTG9fdTRPYXBjNl94R3RRWmxBWGYxdXNfbkpRRHNVQmk0R3Vldmh6aldnalplbXgxdmEwT0ZNbGl1UjI3NE1reEVJODZ2YVBNdXdGUE9qRUpVUHZHWkFSSVZ6Y1NOOFVpOUhCTFZocm5qS0tfNUJxWGtGdktaQWhXdQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">New Electronics&nbsp;·&nbsp;2026-06-24</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMixwFBVV95cUxNelVMVXRPM21wRkRDa0dPSDl6emZld29waTdyOTNSTGszLTBqR0FZTE5PSjlYVkV2QUxnS01CeFQ3cm9xaWIxb0IyRldvR2d3cDhHcDh3SF9ZMXp6a0RFRUlFQlUzRGtwQkF1YWJPWWNLZFZoZkRQUFJyVFZpcWdaZU5TZmhWVHVuUnVxYjZhN1dSOVp0UHBtNEdVWXZ1N2dlTU0xX3pxZVkwOG9RakxhMlMxX1R4VE8ySU41dS1aa1MzelVjWlhv?oc=5" target="_blank" rel="noopener">Infineon begins mass production of 8Tx8Rx automotive radar transceiver</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMixwFBVV95cUxNelVMVXRPM21wRkRDa0dPSDl6emZld29waTdyOTNSTGszLTBqR0FZTE5PSjlYVkV2QUxnS01CeFQ3cm9xaWIxb0IyRldvR2d3cDhHcDh3SF9ZMXp6a0RFRUlFQlUzRGtwQkF1YWJPWWNLZFZoZkRQUFJyVFZpcWdaZU5TZmhWVHVuUnVxYjZhN1dSOVp0UHBtNEdVWXZ1N2dlTU0xX3pxZVkwOG9RakxhMlMxX1R4VE8ySU41dS1aa1MzelVjWlhv?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Bisinfotech&nbsp;·&nbsp;2026-06-24</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiqAFBVV95cUxOQk1BQVFuZ0MxTDNtMUxFbUdsaVlPMkZCYkRCMmxCUUZsNl9NZFg4azhKajlPc3dLempOcmpDczhRRGoxRUYtSEdWd1o1UDJrYWV5aS1UNmdMSlBodFNnbTc5Q0QxZ29jTVFQMWtoUVh0aVZ0OTVhOWNMUDBPLVR2d2xpT2lVVm5NaHR3VWhwR0hzcGIwVHdaYnZHOHRwWW5VMmtpMG02Z3U?oc=5" target="_blank" rel="noopener">Infineon Starts Mass Production of Industry’s First 8Tx8Rx Imaging Radar MMIC</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiqAFBVV95cUxOQk1BQVFuZ0MxTDNtMUxFbUdsaVlPMkZCYkRCMmxCUUZsNl9NZFg4azhKajlPc3dLempOcmpDczhRRGoxRUYtSEdWd1o1UDJrYWV5aS1UNmdMSlBodFNnbTc5Q0QxZ29jTVFQMWtoUVh0aVZ0OTVhOWNMUDBPLVR2d2xpT2lVVm5NaHR3VWhwR0hzcGIwVHdaYnZHOHRwWW5VMmtpMG02Z3U?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">테크월드&nbsp;·&nbsp;2026-06-10</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiaEFVX3lxTFBzbVJZbnBvaUYxTklRUDczRFpndlBXS2tsc0N1MkJvc3BBSVdwTnktbEUwSVZSeUNVS0tyd3BzbENUazB3VDZkM3I4aDliQ3k3N1gyVHhMVHhvNFM4UGRDcmVhOEQtR0Jh?oc=5" target="_blank" rel="noopener">[TECH한주] 스마트레이더시스템, 4D 이미징 레이다로 글로벌 영토 확장</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiaEFVX3lxTFBzbVJZbnBvaUYxTklRUDczRFpndlBXS2tsc0N1MkJvc3BBSVdwTnktbEUwSVZSeUNVS0tyd3BzbENUazB3VDZkM3I4aDliQ3k3N1gyVHhMVHhvNFM4UGRDcmVhOEQtR0Jh?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Fortune Business Insights&nbsp;·&nbsp;2026-06-08</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiekFVX3lxTE8zTjhYSkxWNWZGQU9NZUpGbkVyUHVSMm5FUUx6STM1a0l3SmFGS2JIMVQ1ZDlBRUlOWFBUTm5Rb3YxSUV5S2JGeHJwODlJeHZvZVZOQjdjNEthcDBSWmprNUdaeE5FdzdvcFRMNThIYkxoS2Zxa0Z0X3pn?oc=5" target="_blank" rel="noopener">4D Imaging Radar Market Size, Share | Growth Forecast [2034]</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiekFVX3lxTE8zTjhYSkxWNWZGQU9NZUpGbkVyUHVSMm5FUUx6STM1a0l3SmFGS2JIMVQ1ZDlBRUlOWFBUTm5Rb3YxSUV5S2JGeHJwODlJeHZvZVZOQjdjNEthcDBSWmprNUdaeE5FdzdvcFRMNThIYkxoS2Zxa0Z0X3pn?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div><h2 class="topic-title">60GHz 레이더 헬스케어</h2>
-
-<div class="card">
-  <div class="card-meta">EE Times Asia&nbsp;·&nbsp;2026-06-10</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMingFBVV95cUxOS0ZMZnBjYnoySC02SUlkb1hiZ3A0QWtxbkRDVmhlMzJDdDkwWGVwLThWenlDT0YtZG5McTFnemlGT21oaFpueDl6SGxqYW5zQWs0Zm9wYzU4MmtOVFhnTTZHVVBJMTVBZXJkWkxETDBFLWI3dWZKc2tJVnhrWkI4M0VFZHVaUHZRUG44MlZ5dzlyMkVRSmFvY3JrSU53Zw?oc=5" target="_blank" rel="noopener">How 60GHz Radar Powers Next-Gen In-Cabin Sensing & Safety</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMingFBVV95cUxOS0ZMZnBjYnoySC02SUlkb1hiZ3A0QWtxbkRDVmhlMzJDdDkwWGVwLThWenlDT0YtZG5McTFnemlGT21oaFpueDl6SGxqYW5zQWs0Zm9wYzU4MmtOVFhnTTZHVVBJMTVBZXJkWkxETDBFLWI3dWZKc2tJVnhrWkI4M0VFZHVaUHZRUG44MlZ5dzlyMkVRSmFvY3JrSU53Zw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">All About Circuits&nbsp;·&nbsp;2026-06-09</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMinwFBVV95cUxNdkZKemREaUJaLUF3cU1Bd090Ynh2ZFNIS0xUM2lJc1pBTGdVUWxFYWM2QlZqXzRmVk9MS0JkXzBrV09yeUxrbFB3Vlo5WVNUOHFwMGtZMGpOTjFKc2duV0tKb1NJbkJzMEt0cV9kT214MW9rMm1zNGljcDNnZjBuaWt0Z1ltdTh2U2VlckJGQ3YtaWRuWmtOZVhsd1hlaW8?oc=5" target="_blank" rel="noopener">Goodbye Cuff: AI Radar Monitors Heart Health Across the Room</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMinwFBVV95cUxNdkZKemREaUJaLUF3cU1Bd090Ynh2ZFNIS0xUM2lJc1pBTGdVUWxFYWM2QlZqXzRmVk9MS0JkXzBrV09yeUxrbFB3Vlo5WVNUOHFwMGtZMGpOTjFKc2duV0tKb1NJbkJzMEt0cV9kT214MW9rMm1zNGljcDNnZjBuaWt0Z1ltdTh2U2VlckJGQ3YtaWRuWmtOZVhsd1hlaW8?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Bioengineer.org&nbsp;·&nbsp;2026-06-08</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMijAFBVV95cUxNSmx1cEVLVGVmb2FHTG5RTjdCQklKMGRxMlFwZ0pmMUx5ZFU0cWs0UEdnNmFiNFBwaEVNQ3hJV2NhMWZocklxS3RTaTg2bWVEcVZkRkF5ZGpqT2hIdmNLZWFIWHNaWnNIcUYtQ0hBTnk2UVdDS0RUck5LQzRMOXNRZzNoSllrSG5McFlxdg?oc=5" target="_blank" rel="noopener">Radar-Based Contactless Movement Monitoring for Outpatients</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMijAFBVV95cUxNSmx1cEVLVGVmb2FHTG5RTjdCQklKMGRxMlFwZ0pmMUx5ZFU0cWs0UEdnNmFiNFBwaEVNQ3hJV2NhMWZocklxS3RTaTg2bWVEcVZkRkF5ZGpqT2hIdmNLZWFIWHNaWnNIcUYtQ0hBTnk2UVdDS0RUck5LQzRMOXNRZzNoSllrSG5McFlxdg?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">전자신문&nbsp;·&nbsp;2026-05-29</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiTkFVX3lxTE5iZW1YWF9kMF8xcGJxc0Zlakd0VDlCckFlMHN6aDEyM1BCanNYTTNsQlRrWVdnTkpveFJiRFk4M1AzeGJjTFBxR1h0WDdLZw?oc=5" target="_blank" rel="noopener">하이퍼네트워크, AI 비접촉 헬스케어 모니터링으로 돌봄 혁신 나서</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiTkFVX3lxTE5iZW1YWF9kMF8xcGJxc0Zlakd0VDlCckFlMHN6aDEyM1BCanNYTTNsQlRrWVdnTkpveFJiRFk4M1AzeGJjTFBxR1h0WDdLZw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Nature&nbsp;·&nbsp;2026-05-25</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9QTnVkM3BuRVdudmtqSXZ1YUxxU19xbms3eGh4c0dFaElsZDI2Z2dQQWVTU0YzdklMZDBLbkIzcWZubFp6QXhkOXRhSDBuckdRZUJNN0FXR3hsNHVvQWFv?oc=5" target="_blank" rel="noopener">Measuring multi-site pulse transit time with an AI-enabled mmWave radar</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9QTnVkM3BuRVdudmtqSXZ1YUxxU19xbms3eGh4c0dFaElsZDI2Z2dQQWVTU0YzdklMZDBLbkIzcWZubFp6QXhkOXRhSDBuckdRZUJNN0FXR3hsNHVvQWFv?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">eHealth Magazine&nbsp;·&nbsp;2026-05-04</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiwwFBVV95cUxOa3B3eVZ4OTZaTzluUHpzSEJlaFJjd3dIdTIwVkZ5MERvaEhsT25QTWR4R1VieGVyeWthTFA0X3Fxc0lOOW0xZGZTbXFoZ0RHQTRzUFpTcVpJd0dXS2xaWV9HNzV4ZnJfLU1aSVFGclUwUlFCU0k4djhkMGhfOTFZdlVFNng0UnNmd3pWMm5rWEpPQW9rOWZsMkVQSG9HQ1FBbjdiM3VkTDlTd2NuVm5lSUtndEtVaGd2SGpXa3BCRmJOTzg?oc=5" target="_blank" rel="noopener">AngelSpark Backs Kubo Care to Scale AI-Led, Contactless Eldercare Monitoring Globally</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiwwFBVV95cUxOa3B3eVZ4OTZaTzluUHpzSEJlaFJjd3dIdTIwVkZ5MERvaEhsT25QTWR4R1VieGVyeWthTFA0X3Fxc0lOOW0xZGZTbXFoZ0RHQTRzUFpTcVpJd0dXS2xaWV9HNzV4ZnJfLU1aSVFGclUwUlFCU0k4djhkMGhfOTFZdlVFNng0UnNmd3pWMm5rWEpPQW9rOWZsMkVQSG9HQ1FBbjdiM3VkTDlTd2NuVm5lSUtndEtVaGd2SGpXa3BCRmJOTzg?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Nature&nbsp;·&nbsp;2026-04-07</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9OTEoxNXhiSnJMeWFaZ2tZeXMxUnZwc21sUWdtZDF3eGwwb0d1bFE3c082dS15MlhlNXl1VkpxbkROUy0tdTQyeFVvTTFtNVdjZFBwak0tVjFNVk9NcFJV?oc=5" target="_blank" rel="noopener">Extensive Age-Balanced and Subject-Varied mmWave Radar Dataset of Referenced Records for Vital Signs</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9OTEoxNXhiSnJMeWFaZ2tZeXMxUnZwc21sUWdtZDF3eGwwb0d1bFE3c082dS15MlhlNXl1VkpxbkROUy0tdTQyeFVvTTFtNVdjZFBwak0tVjFNVk9NcFJV?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Nature&nbsp;·&nbsp;2026-03-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE5EZXZ4cXhwNGlXeEk3SHZfenhtaDRaWjdUb1JJUFFJNmZVVkZjNUxOQnREeG1mWEZsR2JzSzdDMnQ0dTdEMk53UEs4a2toaURMbFl2R0VyOW1aVHdIbWdF?oc=5" target="_blank" rel="noopener">A dataset of 120 GHz millimeter-wave radar vital signals with synchronized reference recordings</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE5EZXZ4cXhwNGlXeEk3SHZfenhtaDRaWjdUb1JJUFFJNmZVVkZjNUxOQnREeG1mWEZsR2JzSzdDMnQ0dTdEMk53UEs4a2toaURMbFl2R0VyOW1aVHdIbWdF?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Nature&nbsp;·&nbsp;2026-02-27</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE5KWHJNb0tlUFQxM0pmZzFUbHNra3BKdVRxUG5FUUdLTlNhSHY2WXdVU2NPNHZ3N1FWRHpVQjFkMHJaVERPNjM4V1BnVWtRVlVONmtNQVNpdTJpcWIwMkhv?oc=5" target="_blank" rel="noopener">Advances in principles and technologies of non-mechanical blood pressure monitoring</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE5KWHJNb0tlUFQxM0pmZzFUbHNra3BKdVRxUG5FUUdLTlNhSHY2WXdVU2NPNHZ3N1FWRHpVQjFkMHJaVERPNjM4V1BnVWtRVlVONmtNQVNpdTJpcWIwMkhv?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Nature&nbsp;·&nbsp;2026-02-25</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9SQ0dSV3RjTTAwWVRhdkJXR1BEOEgtYkU2VUk2SmUtazRKQnBJejZqbWJkbTJqVk1Oc0VwV2VGTE9VeGJkTlZZNkJ2a0tUWDlLR2dRTkNTaW1VcjM0d1U4?oc=5" target="_blank" rel="noopener">Millimeter-wave technology for multi-person fall detection validated through wearable sensors and real-life scenarios</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9SQ0dSV3RjTTAwWVRhdkJXR1BEOEgtYkU2VUk2SmUtazRKQnBJejZqbWJkbTJqVk1Oc0VwV2VGTE9VeGJkTlZZNkJ2a0tUWDlLR2dRTkNTaW1VcjM0d1U4?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Hackster.io&nbsp;·&nbsp;2026-02-11</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMi0AFBVV95cUxPMHF5RktBWjROYWVTUFJ2eUN5a05aTENWY0R0SXFSTWV5b0JXVktKVUFNdm1nWmpqMk5xSlNJZVhtQzh1dWJsWVNmNUgzb1pQZUdWNTd0bFo2aTZ5Tjc4VWF0VVFnYXFxZ1JzODQ1VkVVbjZDNzQwbjVPUFhQcGRZb2tUSFktMkhjOHBHa3pzZHl6WU1oZXBlT2JyckJEemZWUy1KUGo3SkV4NHhSc041THdXZG83dXF6cnRxNDR0U0VGZXRfZUd5Qkw4R1F5c0NO0gHWAUFVX3lxTE1BWnFvQjBqd0xsRWYtdWxSanBlbHZVRjlTN3FHY29SZUoxTHd2VUdvNy1CUlMyaEsxb2UxWm9FYXg2bmtvaVRKN1N3eXlyTHdidDVPNy10cTBTNkFxeUxtMDg1MmdoU0RENUJqWk43eDVkczlNYm0yaTFlaEt1S2l0NTRXMkM5bGZCZzlxQ2szaDllanVSNm0ySUZIaURXWTJYbGJZRjJSRmpleWYyR0ZiVVhpU25sV29rVXZlSWRlMTNhUlh6cUthQUMwMkxwWC1LS0tuTHc?oc=5" target="_blank" rel="noopener">Researchers Warn of mmWave Heart-Monitoring Privacy Risks — And Develop "Camouflage" Against Them</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMi0AFBVV95cUxPMHF5RktBWjROYWVTUFJ2eUN5a05aTENWY0R0SXFSTWV5b0JXVktKVUFNdm1nWmpqMk5xSlNJZVhtQzh1dWJsWVNmNUgzb1pQZUdWNTd0bFo2aTZ5Tjc4VWF0VVFnYXFxZ1JzODQ1VkVVbjZDNzQwbjVPUFhQcGRZb2tUSFktMkhjOHBHa3pzZHl6WU1oZXBlT2JyckJEemZWUy1KUGo3SkV4NHhSc041THdXZG83dXF6cnRxNDR0U0VGZXRfZUd5Qkw4R1F5c0NO0gHWAUFVX3lxTE1BWnFvQjBqd0xsRWYtdWxSanBlbHZVRjlTN3FHY29SZUoxTHd2VUdvNy1CUlMyaEsxb2UxWm9FYXg2bmtvaVRKN1N3eXlyTHdidDVPNy10cTBTNkFxeUxtMDg1MmdoU0RENUJqWk43eDVkczlNYm0yaTFlaEt1S2l0NTRXMkM5bGZCZzlxQ2szaDllanVSNm0ySUZIaURXWTJYbGJZRjJSRmpleWYyR0ZiVVhpU25sV29rVXZlSWRlMTNhUlh6cUthQUMwMkxwWC1LS0tuTHc?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">교수신문&nbsp;·&nbsp;2026-01-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZ0FVX3lxTFBnWlJXZS1nUDJtcVZ1YjFobE9fMXd3VGxLZHhxYXk1ckVZUXI4b2Fyc19PY3FLN1k2REgxODJ1MGR0U1g0OUt2Q1hBMExqaW9RN1dlbEpNS1hpREtGTkdtQkVtQm0teVE?oc=5" target="_blank" rel="noopener">'글로벌 시장에 당찬 도전' 건국대 CES 2026 파견단</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiZ0FVX3lxTFBnWlJXZS1nUDJtcVZ1YjFobE9fMXd3VGxLZHhxYXk1ckVZUXI4b2Fyc19PY3FLN1k2REgxODJ1MGR0U1g0OUt2Q1hBMExqaW9RN1dlbEpNS1hpREtGTkdtQkVtQm0teVE?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">통신일보&nbsp;·&nbsp;2026-01-30</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZkFVX3lxTE15UzNyMFhBU1FFdzFtZzNZSXNFeFA5akRfRmpOWUlhRFM2aXZKNUNSWXdDTTY3QkFfSXdkRElqNUloeEwzWG83TG1RR002b1I0d1p5d2U4c1FPV3ZpUFk5M1FSSC1ZQQ?oc=5" target="_blank" rel="noopener">건국대, CES 2026 창업 파견단 성과 거둬</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiZkFVX3lxTE15UzNyMFhBU1FFdzFtZzNZSXNFeFA5akRfRmpOWUlhRFM2aXZKNUNSWXdDTTY3QkFfSXdkRElqNUloeEwzWG83TG1RR002b1I0d1p5d2U4c1FPV3ZpUFk5M1FSSC1ZQQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Nature&nbsp;·&nbsp;2026-01-16</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTFBWYlFOZl9jeDJxazkwMGRLNVU1SmxINHVOT3hxbmZFY3dEeGpFckZwTHdKTU1HZjZzUk1jcUZOdHM0R3BtS05xTTlxYjVoRWtacHdVc25ZeWdiS1NUR19z?oc=5" target="_blank" rel="noopener">Contactless 12-lead electrocardiogram via deep computational radar</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTFBWYlFOZl9jeDJxazkwMGRLNVU1SmxINHVOT3hxbmZFY3dEeGpFckZwTHdKTU1HZjZzUk1jcUZOdHM0R3BtS05xTTlxYjVoRWtacHdVc25ZeWdiS1NUR19z?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">Nature&nbsp;·&nbsp;2026-01-06</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE1hZDNGY29sUnlYUWYwdmo3NUFZSGExTnFacXFOTFpmVFFDWjFNdl9lLWpyOXpJSU5BeHhKN2lMby02SXduUkJyaHZxWUdKb01SMkstZEp3cW5IM3haaktZ?oc=5" target="_blank" rel="noopener">SiViS: Simulated multi-patient physiological clinical states for advanced vital sign radar monitoring research</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE1hZDNGY29sUnlYUWYwdmo3NUFZSGExTnFacXFOTFpmVFFDWjFNdl9lLWpyOXpJSU5BeHhKN2lMby02SXduUkJyaHZxWUdKb01SMkstZEp3cW5IM3haaktZ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
+{sections_html}
 </body>
 </html>
+"""
+    DOCS_DIR.mkdir(exist_ok=True)
+    (DOCS_DIR / "index.html").write_text(page, encoding="utf-8")
+
+
+def main():
+    seen         = load_seen()
+    new_seen     = dict(seen)
+    today        = datetime.date.today().isoformat()
+
+    new_results  = {}   # 오늘 새로 수집된 기사
+    all_results  = {}   # 새 기사 + 최근 기사 (최근 기사 fallback용)
+
+    for topic_key, info in TOPICS.items():
+        print(f"\n=== {info['label']} ===")
+        new_arts   = []
+        all_arts   = []
+        seen_urls  = set()
+
+        for feed_url in info["feeds"]:
+            print(f"  피드: {feed_url[:90]}...")
+            items = fetch_rss(feed_url)
+            print(f"  → {len(items)}건 수신")
+            time.sleep(1)
+
+            for art in items:
+                uid = make_id(art["url"])
+                if art["url"] in seen_urls:
+                    continue
+                if not art["title"] or art["title"] == "[Removed]":
+                    continue
+                seen_urls.add(art["url"])
+
+                # 전체 목록에는 중복 없이 추가 (최근 기사 표시용)
+                all_arts.append(art)
+
+                # 신규 기사 판별
+                if uid not in seen:
+                    new_seen[uid] = today
+                    new_arts.append(art)
+
+        all_arts.sort(key=lambda a: a["published"], reverse=True)
+        new_arts.sort(key=lambda a: a["published"], reverse=True)
+
+        new_results[topic_key] = new_arts[:MAX_NEW_ARTICLES]
+        all_results[topic_key] = all_arts
+
+        print(f"  → 신규 {len(new_results[topic_key])}건 / 전체 {len(all_arts)}건")
+
+    generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M KST")
+    build_html(new_results, all_results, generated_at)
+    save_seen(new_seen)
+    print("\n완료: docs/index.html 생성됨")
+
+
+if __name__ == "__main__":
+    main()
