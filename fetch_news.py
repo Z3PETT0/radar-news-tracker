@@ -112,6 +112,42 @@ def clean_html(text):
     return text.strip()
 
 
+def clean_description(desc, title, source):
+    """
+    Google News RSS description 정제:
+    - 제목 반복 텍스트 제거
+    - 출처명 반복 제거
+    - 의미 없는 짧은 잔여 텍스트 제거
+    """
+    if not desc:
+        return ""
+
+    text = desc
+
+    # 1) "제목 - 출처명" 또는 "제목 출처명" 패턴 제거 (Google News 특유)
+    #    예: "인피니언, 8Tx8Rx 이미징 레이더 MMIC 양산 개시 - e4ds news"
+    if title:
+        # 제목의 앞 30자 기준으로 시작 부분이 반복되면 제거
+        title_prefix = re.escape(title[:30])
+        text = re.sub(rf"^{title_prefix}.*", "", text, flags=re.DOTALL).strip()
+
+    # 2) 출처명이 단독으로 끝에 붙는 경우 제거
+    #    예: "...내용... 뉴스와이어"
+    if source:
+        src_escaped = re.escape(source.strip())
+        text = re.sub(rf"\s*{src_escaped}\s*$", "", text, flags=re.IGNORECASE).strip()
+
+    # 3) 남은 텍스트가 너무 짧거나(20자 미만) 제목과 거의 같으면 빈 문자열 반환
+    if len(text) < 20:
+        return ""
+
+    # 4) 너무 길면 200자로 자르고 말줄임표
+    if len(text) > 200:
+        text = text[:200].rsplit(" ", 1)[0] + "…"
+
+    return text
+
+
 def parse_pubdate(pubdate_str):
     """RFC 2822 날짜 → YYYY-MM-DD"""
     try:
@@ -153,12 +189,14 @@ def fetch_rss(url):
         if not title or not link:
             continue
 
+        summary = clean_description(desc, title, source)
+
         articles.append({
             "title":     title,
             "url":       link,
             "source":    source,
             "published": parse_pubdate(pubdate),
-            "summary":   desc if desc else "(요약 없음 — 원문을 확인하세요)",
+            "summary":   summary,
         })
 
     return articles
@@ -180,14 +218,23 @@ def build_html(topic_results, generated_at):
             title   = art["title"].replace("<","&lt;").replace(">","&gt;")
             source  = art.get("source", "")
             pub     = art.get("published", "")
-            summary = art["summary"].replace("\n","<br>")
+            summary = art.get("summary", "")
             url     = art["url"]
-            meta    = f"{source}&nbsp;·&nbsp;{pub}" if source and pub else source or pub
+
+            # 출처 · 날짜 메타 줄
+            meta = "&nbsp;·&nbsp;".join(filter(None, [source, pub]))
+
+            # 요약이 있을 때만 표시
+            summary_html = (
+                f'<p class="card-summary">{summary}</p>'
+                if summary else ""
+            )
+
             sections_html += f"""
 <div class="card">
   <div class="card-meta">{meta}</div>
   <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
-  <p class="card-summary">{summary}</p>
+  {summary_html}
   <a class="card-link" href="{url}" target="_blank" rel="noopener">원문 보기 →</a>
 </div>
 """
