@@ -156,19 +156,10 @@ def fetch_rss(url):
         if not title or not link:
             continue
 
-        # 제목 끝의 " - 출처명" 패턴 제거
-        # 방법1: source 태그와 일치하는 경우
+        # 제목 끝의 " - 출처명" 패턴 제거 (source 태그 일치 시만, 안전)
         if source:
             src_escaped = re.escape(source.strip())
             title = re.sub(rf"\s*[-–—]\s*{src_escaped}\s*$", "", title, flags=re.IGNORECASE).strip()
-        # 방법2: source 태그와 달라도 " - 짧은텍스트" 패턴이면 제거
-        # 제목 본문이 15자 이상 남아있을 때만 적용
-        def remove_source_suffix(t):
-            m = re.search(r"\s*[-–—]\s*[^-–—]{2,40}$", t)
-            if m and len(t) - len(m.group(0)) >= 15:
-                return t[:m.start()].strip()
-            return t
-        title = remove_source_suffix(title)
 
         articles.append({
             "title":     title,
