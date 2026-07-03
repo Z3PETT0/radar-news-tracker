@@ -155,6 +155,14 @@ def fetch_rss(url):
         source  = get("source")
         if not title or not link:
             continue
+
+        # 제목 끝의 " - 출처명" 패턴 제거
+        # 예: "인피니언, 8Tx8Rx 이미징 레이더 MMIC 양산 개시 - e4ds news"
+        #  →  "인피니언, 8Tx8Rx 이미징 레이더 MMIC 양산 개시"
+        if source:
+            src_escaped = re.escape(source.strip())
+            title = re.sub(rf"\s*[-–—]\s*{src_escaped}\s*$", "", title, flags=re.IGNORECASE).strip()
+
         articles.append({
             "title":     title,
             "url":       link,
