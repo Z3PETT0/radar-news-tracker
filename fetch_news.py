@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-이미징 레이더 / 60GHz 헬스케어 레이더 뉴스 자동 수집 + HTML 생성 스크립트
+이미징 레이더 / 60GHz 헬스케어 / 자율주행 뉴스 자동 수집 + HTML 생성
 【완전 무료 버전 - API 키 불필요】
 """
 
@@ -20,9 +20,9 @@ DATA_DIR     = Path("data")
 DOCS_DIR     = Path("docs")
 HISTORY_FILE = DATA_DIR / "seen_articles.json"
 
-MAX_NEW_ARTICLES     = 15   # 오늘 신규 기사 최대 표시 수
-MAX_RECENT_ARTICLES  = 5    # 신규 없을 때 최근 기사 표시 수
-RECENT_DAYS_KEEP     = 7    # seen 기록을 며칠간 유지할지 (이 기간 지난 기사는 재표시 가능)
+MAX_NEW_ARTICLES    = 15
+MAX_RECENT_ARTICLES = 5
+RECENT_DAYS_KEEP    = 7
 
 
 def gnews(query, lang="en", country="US"):
@@ -78,15 +78,13 @@ HEADERS = {
 
 
 # -------------------------------------------------------
-# seen 기록: {url_hash: "YYYY-MM-DD"} 형태로 날짜도 저장
-# 7일 지난 항목은 자동 삭제 → 오래된 기사도 다시 표시 가능
+# 유틸리티
 # -------------------------------------------------------
 
 def load_seen():
     if HISTORY_FILE.exists():
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # 구버전 호환 (리스트 형태였던 경우 → 빈 dict로 초기화)
         if isinstance(data, list):
             return {}
         return data
@@ -103,6 +101,31 @@ def save_seen(seen):
 
 def make_id(url):
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def normalize_title(title):
+    """제목 정규화: 소문자 + 영문/숫자/한글만 남김 → 유사도 비교용"""
+    t = title.lower()
+    t = re.sub(r"[^\w가-힣]", "", t)
+    return t
+
+
+def is_duplicate_title(title, seen_titles, threshold=0.8):
+    """정규화 제목 앞 40자 기준으로 기존 제목과 유사도 비교"""
+    norm = normalize_title(title)[:40]
+    if not norm:
+        return False
+    for existing in seen_titles:
+        existing_cut = existing[:40]
+        if not existing_cut:
+            continue
+        shorter = min(len(norm), len(existing_cut))
+        if shorter == 0:
+            continue
+        matches = sum(1 for a, b in zip(norm, existing_cut) if a == b)
+        if matches / shorter >= threshold:
+            return True
+    return False
 
 
 def clean_html(text):
@@ -166,12 +189,10 @@ def fetch_rss(url):
         source  = get("source")
         if not title or not link:
             continue
-
-        # 제목 끝의 " - 출처명" 패턴 제거 (source 태그 일치 시만, 안전)
+        # 제목 끝 출처명 제거 (source 태그 일치 시만)
         if source:
             src_escaped = re.escape(source.strip())
             title = re.sub(rf"\s*[-–—]\s*{src_escaped}\s*$", "", title, flags=re.IGNORECASE).strip()
-
         articles.append({
             "title":     title,
             "url":       link,
@@ -182,8 +203,12 @@ def fetch_rss(url):
     return articles
 
 
+# -------------------------------------------------------
+# HTML 생성
+# -------------------------------------------------------
+
 def card_html(art):
-    title   = art["title"].replace("<","&lt;").replace(">","&gt;")
+    title   = art["title"].replace("<", "&lt;").replace(">", "&gt;")
     source  = art.get("source", "")
     pub     = art.get("published", "")
     summary = art.get("summary", "")
@@ -207,7 +232,6 @@ def build_html(new_results, all_results, generated_at):
         recent_arts = [a for a in all_arts if a not in new_arts][:MAX_RECENT_ARTICLES]
 
         sections_html += f'<h2 class="topic-title">{info["label"]}</h2>\n'
-
         if new_arts:
             for art in new_arts:
                 sections_html += card_html(art)
@@ -273,18 +297,23 @@ def build_html(new_results, all_results, generated_at):
     (DOCS_DIR / "index.html").write_text(page, encoding="utf-8")
 
 
+# -------------------------------------------------------
+# 메인
+# -------------------------------------------------------
+
 def main():
     seen         = load_seen()
     new_seen     = dict(seen)
     today        = datetime.date.today().isoformat()
+    cutoff_date  = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
 
-    new_results  = {}   # 오늘 새로 수집된 기사
-    all_results  = {}   # 새 기사 + 최근 기사 (최근 기사 fallback용)
+    new_results = {}
+    all_results = {}
 
     for topic_key, info in TOPICS.items():
         print(f"\n=== {info['label']} ===")
-        new_arts   = []
-        all_arts   = []
+        new_arts    = []
+        all_arts    = []
         seen_urls   = set()
         seen_titles = []  # 제목 유사도 중복 제거용
 
@@ -296,27 +325,23 @@ def main():
 
             for art in items:
                 uid = make_id(art["url"])
+
                 if art["url"] in seen_urls:
                     continue
                 if not art["title"] or art["title"] == "[Removed]":
                     continue
                 # 제목 유사도 기반 중복 제거
                 if is_duplicate_title(art["title"], seen_titles):
-                    print(f"    [중복제목] {art['title'][:50]}")
+                    print(f"    [중복제목 제거] {art['title'][:50]}")
                     continue
+                # 날짜 필터: 최근 30일 이내만
+                if art["published"] and art["published"] < cutoff_date:
+                    continue
+
                 seen_urls.add(art["url"])
                 seen_titles.append(normalize_title(art["title"]))
-
-                # 전체 목록에는 중복 없이 추가 (최근 기사 표시용)
                 all_arts.append(art)
 
-                # 날짜 필터: 최근 30일 이내 기사만 허용
-                if art["published"]:
-                    cutoff = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
-                    if art["published"] < cutoff:
-                        continue
-
-                # 신규 기사 판별
                 if uid not in seen:
                     new_seen[uid] = today
                     new_arts.append(art)
@@ -326,7 +351,6 @@ def main():
 
         new_results[topic_key] = new_arts[:MAX_NEW_ARTICLES]
         all_results[topic_key] = all_arts
-
         print(f"  → 신규 {len(new_results[topic_key])}건 / 전체 {len(all_arts)}건")
 
     generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M KST")
