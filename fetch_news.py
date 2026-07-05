@@ -285,7 +285,8 @@ def main():
         print(f"\n=== {info['label']} ===")
         new_arts   = []
         all_arts   = []
-        seen_urls  = set()
+        seen_urls   = set()
+        seen_titles = []  # 제목 유사도 중복 제거용
 
         for feed_url in info["feeds"]:
             print(f"  피드: {feed_url[:90]}...")
@@ -299,7 +300,12 @@ def main():
                     continue
                 if not art["title"] or art["title"] == "[Removed]":
                     continue
+                # 제목 유사도 기반 중복 제거
+                if is_duplicate_title(art["title"], seen_titles):
+                    print(f"    [중복제목] {art['title'][:50]}")
+                    continue
                 seen_urls.add(art["url"])
+                seen_titles.append(normalize_title(art["title"]))
 
                 # 전체 목록에는 중복 없이 추가 (최근 기사 표시용)
                 all_arts.append(art)
