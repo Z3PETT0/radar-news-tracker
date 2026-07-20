@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-이미징 레이더 / 60GHz 헬스케어 / 자율주행 뉴스 자동 수집 + HTML 생성
+이미징 레이더 / 60GHz 헬스케어 / 자율주행 / 로봇택시 뉴스 자동 수집 + HTML 생성
 【완전 무료 버전 - API 키 불필요】
 """
 
@@ -65,6 +65,18 @@ TOPICS = {
             gnews("자율주행 상용화", lang="ko", country="KR"),
         ],
     },
+    "robotaxi": {
+        "label": "로봇택시 (Robotaxi)",
+        "feeds": [
+            gnews('"robotaxi" news 2026'),
+            gnews('"robo-taxi" autonomous'),
+            gnews('Waymo robotaxi'),
+            gnews('Tesla robotaxi'),
+            gnews('"robotaxi" service launch'),
+            gnews("로봇택시", lang="ko", country="KR"),
+            gnews("자율주행 택시", lang="ko", country="KR"),
+        ],
+    },
 }
 
 HEADERS = {
@@ -76,10 +88,6 @@ HEADERS = {
     "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
-
-# -------------------------------------------------------
-# 유틸리티
-# -------------------------------------------------------
 
 def load_seen():
     if HISTORY_FILE.exists():
@@ -104,14 +112,12 @@ def make_id(url):
 
 
 def normalize_title(title):
-    """제목 정규화: 소문자 + 영문/숫자/한글만 남김 → 유사도 비교용"""
     t = title.lower()
     t = re.sub(r"[^\w가-힣]", "", t)
     return t
 
 
 def is_duplicate_title(title, seen_titles, threshold=0.8):
-    """정규화 제목 앞 40자 기준으로 기존 제목과 유사도 비교"""
     norm = normalize_title(title)[:40]
     if not norm:
         return False
@@ -189,7 +195,6 @@ def fetch_rss(url):
         source  = get("source")
         if not title or not link:
             continue
-        # 제목 끝 출처명 제거 (source 태그 일치 시만)
         if source:
             src_escaped = re.escape(source.strip())
             title = re.sub(rf"\s*[-–—]\s*{src_escaped}\s*$", "", title, flags=re.IGNORECASE).strip()
@@ -202,10 +207,6 @@ def fetch_rss(url):
         })
     return articles
 
-
-# -------------------------------------------------------
-# HTML 생성
-# -------------------------------------------------------
 
 def card_html(art):
     title   = art["title"].replace("<", "&lt;").replace(">", "&gt;")
@@ -297,10 +298,6 @@ def build_html(new_results, all_results, generated_at):
     (DOCS_DIR / "index.html").write_text(page, encoding="utf-8")
 
 
-# -------------------------------------------------------
-# 메인
-# -------------------------------------------------------
-
 def main():
     seen         = load_seen()
     new_seen     = dict(seen)
@@ -315,7 +312,7 @@ def main():
         new_arts    = []
         all_arts    = []
         seen_urls   = set()
-        seen_titles = []  # 제목 유사도 중복 제거용
+        seen_titles = []
 
         for feed_url in info["feeds"]:
             print(f"  피드: {feed_url[:90]}...")
@@ -325,16 +322,13 @@ def main():
 
             for art in items:
                 uid = make_id(art["url"])
-
                 if art["url"] in seen_urls:
                     continue
                 if not art["title"] or art["title"] == "[Removed]":
                     continue
-                # 제목 유사도 기반 중복 제거
                 if is_duplicate_title(art["title"], seen_titles):
                     print(f"    [중복제목 제거] {art['title'][:50]}")
                     continue
-                # 날짜 필터: 최근 30일 이내만
                 if art["published"] and art["published"] < cutoff_date:
                     continue
 
