@@ -24,6 +24,13 @@ MAX_NEW_ARTICLES    = 15
 MAX_RECENT_ARTICLES = 5
 RECENT_DAYS_KEEP    = 7
 
+# 어떤 주제든 공통으로 걸러낼 키워드 (제목에 포함되면 제외)
+EXCLUDE_KEYWORDS = [
+    "영화", "드라마", "배우", "예고편", "리뷰", "티저", "ost",
+    "연예", "아이돌", "콘서트", "앨범", "뮤직비디오",
+    "recipe", "cooking", "fashion", "celebrity", "trailer",
+]
+
 
 def gnews(query, lang="en", country="US"):
     q = urllib.parse.quote(query)
@@ -39,8 +46,8 @@ TOPICS = {
             gnews('"4D radar" autonomous driving'),
             gnews('"imaging radar" robotics'),
             gnews('"imaging radar" industrial'),
-            gnews("이미징 레이더", lang="ko", country="KR"),
-            gnews("4D 레이더 자율주행", lang="ko", country="KR"),
+            gnews('"이미징 레이더"', lang="ko", country="KR"),
+            gnews('"4D 레이더" 자율주행', lang="ko", country="KR"),
         ],
     },
     "60ghz_healthcare": {
@@ -50,31 +57,32 @@ TOPICS = {
             gnews('"mmWave radar" patient monitoring'),
             gnews('"60GHz radar" vital sign'),
             gnews('"contactless radar" healthcare'),
-            gnews("60GHz 레이더 헬스케어", lang="ko", country="KR"),
-            gnews("밀리미터파 레이더 생체신호", lang="ko", country="KR"),
+            gnews('"60GHz 레이더" 헬스케어', lang="ko", country="KR"),
+            gnews('"밀리미터파 레이더" 생체신호', lang="ko", country="KR"),
         ],
     },
     "autonomous_driving": {
         "label": "자율주행 (Autonomous Driving)",
         "feeds": [
-            gnews('"autonomous driving" news'),
-            gnews('"self-driving" car 2026'),
-            gnews('"autonomous vehicle" ADAS'),
-            gnews("자율주행 뉴스", lang="ko", country="KR"),
-            gnews("자율주행차 ADAS", lang="ko", country="KR"),
-            gnews("자율주행 상용화", lang="ko", country="KR"),
+            gnews('"autonomous driving" technology'),
+            gnews('"self-driving" car safety'),
+            gnews('"autonomous vehicle" sensor'),
+            # 한국어: 정확한 구문 + 연예/영화 제외
+            gnews('"자율주행차" -영화 -드라마 -배우', lang="ko", country="KR"),
+            gnews('"자율주행" 기술 -영화 -드라마', lang="ko", country="KR"),
+            gnews('"자율주행" ADAS 상용화', lang="ko", country="KR"),
         ],
     },
     "robotaxi": {
         "label": "로봇택시 (Robotaxi)",
         "feeds": [
-            gnews('"robotaxi" news 2026'),
-            gnews('"robo-taxi" autonomous'),
-            gnews('Waymo robotaxi'),
-            gnews('Tesla robotaxi'),
-            gnews('"robotaxi" service launch'),
-            gnews("로봇택시", lang="ko", country="KR"),
-            gnews("자율주행 택시", lang="ko", country="KR"),
+            gnews('"robotaxi" launch OR deploy OR service'),
+            gnews('Waymo robotaxi 2026'),
+            gnews('Tesla robotaxi autonomous'),
+            gnews('"robotaxi" regulation OR policy'),
+            # 한국어: 정확한 구문으로 제한
+            gnews('"로봇택시" -영화 -드라마', lang="ko", country="KR"),
+            gnews('"자율주행 택시" 상용 -영화', lang="ko", country="KR"),
         ],
     },
 }
@@ -130,6 +138,15 @@ def is_duplicate_title(title, seen_titles, threshold=0.8):
             continue
         matches = sum(1 for a, b in zip(norm, existing_cut) if a == b)
         if matches / shorter >= threshold:
+            return True
+    return False
+
+
+def is_irrelevant(title):
+    """제목에 제외 키워드가 포함되면 True"""
+    title_lower = title.lower()
+    for kw in EXCLUDE_KEYWORDS:
+        if kw in title_lower:
             return True
     return False
 
@@ -299,10 +316,10 @@ def build_html(new_results, all_results, generated_at):
 
 
 def main():
-    seen         = load_seen()
-    new_seen     = dict(seen)
-    today        = datetime.date.today().isoformat()
-    cutoff_date  = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    seen        = load_seen()
+    new_seen    = dict(seen)
+    today       = datetime.date.today().isoformat()
+    cutoff_date = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
 
     new_results = {}
     all_results = {}
@@ -326,9 +343,15 @@ def main():
                     continue
                 if not art["title"] or art["title"] == "[Removed]":
                     continue
+                # 무관한 기사 제외 (연예/영화 등)
+                if is_irrelevant(art["title"]):
+                    print(f"    [무관 기사 제거] {art['title'][:50]}")
+                    continue
+                # 제목 유사도 중복 제거
                 if is_duplicate_title(art["title"], seen_titles):
                     print(f"    [중복제목 제거] {art['title'][:50]}")
                     continue
+                # 30일 이내 기사만
                 if art["published"] and art["published"] < cutoff_date:
                     continue
 
