@@ -38,12 +38,23 @@
     font-size: 13px; color: #555; font-weight: 600;
     margin: 16px 0 10px; padding-left: 4px;
   }
+  details.more > summary {
+    list-style: none; cursor: pointer; text-align: center;
+    background: #fff; border: 1px solid #d4d4d8; border-radius: 10px;
+    padding: 12px; margin-bottom: 14px;
+    font-size: 14px; font-weight: 600; color: #2563eb;
+  }
+  details.more > summary::-webkit-details-marker { display: none; }
+  details.more > summary:hover { background: #f0f5ff; }
+  details.more .more-close { display: none; }
+  details.more[open] .more-open { display: none; }
+  details.more[open] .more-close { display: inline; }
 </style>
 </head>
 <body>
 <header>
   <h1>📡 레이더 기술 뉴스 트래커</h1>
-  <div class="updated">마지막 업데이트: 2026-11-13 05:38 KST (매일 자동 갱신)</div>
+  <div class="updated">마지막 업데이트: 2026-11-13 05:41 KST (매일 자동 갱신)</div>
 </header>
 <h2 class="topic-title">이미징 레이더 (자동차 · 산업 · 로봇)</h2>
 <p class="empty">오늘은 새로운 기사가 없습니다.</p>
@@ -69,96 +80,26 @@
 </div><h2 class="topic-title">자율주행 (Autonomous Driving)</h2>
 
 <div class="card">
-  <div class="card-meta">Breakingthenews.net&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMinwFBVV95cUxQMmJIU1lud3pVT3hxZ1pwRmhIamk1SlJMaXlrZWh5eURlQlV0WS1BZGQ0aWoycDcxOGtnanVHUVlSWFFGYWx3YlR2eDhNcFp0ZklRZGJVOGpZbjk0dVJDV3B5Y3N2cnlxUG15cGdnNjd4R2RpbkgxTjU3eGlKZnB5SDNEWjVXNmNUZy1GeS1TWDczVWRVcUk1anJpZkw0cG8?oc=5" target="_blank" rel="noopener">Hyundai, S. Korean firms partner for self-driving tech</a></h3>
+  <div class="card-meta">www.ebn.co.kr&nbsp;·&nbsp;2026-11-13</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE9jTjhucUh2UDRqczBKS0wtcXBCUUdCTGs4eUFrUmJSOGFYdFJSd3lVWDQ0dkQzNVVKcnliUU13VHZubXgzbnJfbW80aUZRc2xSMlRJOENxcFB3eC1wTkRJM3JmNkdPc0JW?oc=5" target="_blank" rel="noopener">현대차-쏘카, 자율주행 힘 합친다…차량·주행 데이터 결합</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMinwFBVV95cUxQMmJIU1lud3pVT3hxZ1pwRmhIamk1SlJMaXlrZWh5eURlQlV0WS1BZGQ0aWoycDcxOGtnanVHUVlSWFFGYWx3YlR2eDhNcFp0ZklRZGJVOGpZbjk0dVJDV3B5Y3N2cnlxUG15cGdnNjd4R2RpbkgxTjU3eGlKZnB5SDNEWjVXNmNUZy1GeS1TWDczVWRVcUk1anJpZkw0cG8?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">BBS불교방송&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMia0FVX3lxTE9JaWx1VVM3ekZRbE04WGVJbmFESGRrZ2tsbGU5ckNOLUVodDRfeEpDaEJsSk1lVC1tYWlnVW84emRtcG55RzhQR3VoYjNJYUVWSzNyOWF3NmVkdm1MMVRGSzAxQ0FpRVRSbkFJ?oc=5" target="_blank" rel="noopener">TS, 독일 전문기관·기업과 자율주행 연구협력 강화</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMia0FVX3lxTE9JaWx1VVM3ekZRbE04WGVJbmFESGRrZ2tsbGU5ckNOLUVodDRfeEpDaEJsSk1lVC1tYWlnVW84emRtcG55RzhQR3VoYjNJYUVWSzNyOWF3NmVkdm1MMVRGSzAxQ0FpRVRSbkFJ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">미디어원&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiiAFBVV95cUxNNmJuMmZETGVzQU50V3RhQlNiR0wtQmhteGNad0ZkVTBrMGc0Ql9iRGllWmNCQ2VTRVRsVkhic2xaTnhHWFZidXJ6bi1VeE9JMEt5bmJQd3Q5M25oUmVTalNLNWhUSGt2VVRRYjhVRHBsbG5tMVdFVkk2Q1hrSUZlSFVBdHR3S21w?oc=5" target="_blank" rel="noopener">현대차·쏘카·에이펙스모빌리티, 자율주행 실도로 데이터 확보 나선다</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiiAFBVV95cUxNNmJuMmZETGVzQU50V3RhQlNiR0wtQmhteGNad0ZkVTBrMGc0Ql9iRGllWmNCQ2VTRVRsVkhic2xaTnhHWFZidXJ6bi1VeE9JMEt5bmJQd3Q5M25oUmVTalNLNWhUSGt2VVRRYjhVRHBsbG5tMVdFVkk2Q1hrSUZlSFVBdHR3S21w?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">진일보 | 전남일보&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMib0FVX3lxTE1lM2RNQVFVZkZaN29kblV3U1JEazUtc3FidkJBbVBHVEMzNzh0RDdjLUxnMGNfZHZ5ZGxNMjVvZ2dOamYxZVJPVzUzallEdkhQcEN1Nlc5R2NQREd2LWpRWEphUnRGdXBPOWdoR1RGcw?oc=5" target="_blank" rel="noopener">현대차·쏘카 자율주행 협력 MOU 체결</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMib0FVX3lxTE1lM2RNQVFVZkZaN29kblV3U1JEazUtc3FidkJBbVBHVEMzNzh0RDdjLUxnMGNfZHZ5ZGxNMjVvZ2dOamYxZVJPVzUzallEdkhQcEN1Nlc5R2NQREd2LWpRWEphUnRGdXBPOWdoR1RGcw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">머니투데이&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMibEFVX3lxTE1FRkdleVplc0loUXpMYjZWSFZPdGZIN0JZR3ZEMWxIZloxV2hkN0ZoUl9pUG00T3FQWjZ3V0U3WkVxVVNfZ3FDNWFRdlVsUTRJTWl2YmV6YW9JckZNSHRHZENTY2hlU25laVFuTNIBckFVX3lxTFBhRHlIRjBnNzhmaWRGTHZiQzhyQjBfNGJOdmVLUUhuZjgwUTI2UVhMdnRkSlpGbV92MlN4SkROVXZiV052STBROVRNS2ZOZnYyZ3FaRDBwVTFxLWU5b0dYN21SUWFrZDN0VXc0X1ItOGNsZw?oc=5" target="_blank" rel="noopener">현대차, 쏘카와 자율주행 실증 동맹…국내 도로 데이터 모은다 - 머니투데이</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMibEFVX3lxTE1FRkdleVplc0loUXpMYjZWSFZPdGZIN0JZR3ZEMWxIZloxV2hkN0ZoUl9pUG00T3FQWjZ3V0U3WkVxVVNfZ3FDNWFRdlVsUTRJTWl2YmV6YW9JckZNSHRHZENTY2hlU25laVFuTNIBckFVX3lxTFBhRHlIRjBnNzhmaWRGTHZiQzhyQjBfNGJOdmVLUUhuZjgwUTI2UVhMdnRkSlpGbV92MlN4SkROVXZiV052STBROVRNS2ZOZnYyZ3FaRDBwVTFxLWU5b0dYN21SUWFrZDN0VXc0X1ItOGNsZw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">뉴스;트리&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiXEFVX3lxTE9RVzRVWUY4TnFoNDByb0VpbXpqT3h4aTRRRDJ0b2ZuZ3lWenhneHhtOWhwRWE5NUNnN04zT3ZOTXRiSE9pblRPblNZLW5VMWFQMGlxOXllelNNWWZM?oc=5" target="_blank" rel="noopener">현대차·쏘카·에이펙스, 자율주행 위한 도로데이터 수집 '맞손'</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiXEFVX3lxTE9RVzRVWUY4TnFoNDByb0VpbXpqT3h4aTRRRDJ0b2ZuZ3lWenhneHhtOWhwRWE5NUNnN04zT3ZOTXRiSE9pblRPblNZLW5VMWFQMGlxOXllelNNWWZM?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">코리아리포트&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMicEFVX3lxTE1JWjZtRXBrbFVVY0lsWU0zUFpPMTduOXFYUTFndEZKUVpVUmJWTXVjZnZtdlhTc3NBUVZXSXJlYmQwX3hscFhiTHIzdHExbWUzbkktMDI3NlpLYzZjcVI1UU5QVUNQTVptTEUxeGJfUms?oc=5" target="_blank" rel="noopener">현대차, 쏘카·에이펙스모빌리티와 자율주행 데이터·플랫폼 협력</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMicEFVX3lxTE1JWjZtRXBrbFVVY0lsWU0zUFpPMTduOXFYUTFndEZKUVpVUmJWTXVjZnZtdlhTc3NBUVZXSXJlYmQwX3hscFhiTHIzdHExbWUzbkktMDI3NlpLYzZjcVI1UU5QVUNQTVptTEUxeGJfUms?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">소비자가 만드는 신문&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMic0FVX3lxTE55by1DSUprN05xbEszNzB0Mk00MmJHdW5vUlpVUEtNNFI5ZTRFdnBncDB4clluZW1qM1RhYVJ5VHJzLVdOM1VyZUpqdzBVZUNWQXR3WUdKV0pvTHZZVkQyMHN4MGRMdkZNOFVXMmZyRDRYTWc?oc=5" target="_blank" rel="noopener">현대차, 자율주행 호출 전용 차량 플랫폼 개발 나서...쏘카·에이펙스모빌리티와 맞손</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMic0FVX3lxTE55by1DSUprN05xbEszNzB0Mk00MmJHdW5vUlpVUEtNNFI5ZTRFdnBncDB4clluZW1qM1RhYVJ5VHJzLVdOM1VyZUpqdzBVZUNWQXR3WUdKV0pvTHZZVkQyMHN4MGRMdkZNOFVXMmZyRDRYTWc?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">플래텀(Platum)&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE5WemRXMG5VNWhyM0lfNlAwdy1fT3Vmd01fQ0VnT1VCaEZDc0gxVTlvVzgtUGR1Q2lyX1k0eFMzckRCcTlJTEthUg?oc=5" target="_blank" rel="noopener">쏘카, 현대차 자율주행 개발 장치 달고 국내 도로 데이터 수집… 자율주행 호출 서비스 준비</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE5WemRXMG5VNWhyM0lfNlAwdy1fT3Vmd01fQ0VnT1VCaEZDc0gxVTlvVzgtUGR1Q2lyX1k0eFMzckRCcTlJTEthUg?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">포커스경제&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMibkFVX3lxTFBZZXZCNVl1NHFXOTF6eEpueVNHb21TMzhkVldBbndqZzZrUW1Zb2R6ak9jUEEzMXc1YTRJbDBRRFpFdS1heVN4dHlMQ3czQl80b2dWY3EwaTlKcU9uZ2hKbE5aYm9fbVpvbDVZdm5R?oc=5" target="_blank" rel="noopener">현대차·쏘카·에이펙스모빌리티, 자율주행 협력…주행 데이터 확보 추진</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMibkFVX3lxTFBZZXZCNVl1NHFXOTF6eEpueVNHb21TMzhkVldBbndqZzZrUW1Zb2R6ak9jUEEzMXc1YTRJbDBRRFpFdS1heVN4dHlMQ3czQl80b2dWY3EwaTlKcU9uZ2hKbE5aYm9fbVpvbDVZdm5R?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">CWN&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiYkFVX3lxTFBXOC0zdG9fTm1hREY1NFRZUjF5ZWFkOFFrSi04SmM5b1FuaEkwVldRVmhQUk1NckY0YmdTdnJZMjExUlJFMFZ0SzZDdW5Qc2k2SHh2c25KZE9vSVprVTd0UDh3?oc=5" target="_blank" rel="noopener">현대차·쏘카·에이펙스, ‘자율주행 실도로 데이터’로 상용화 박차...기술·서비스 협력 본격화</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiYkFVX3lxTFBXOC0zdG9fTm1hREY1NFRZUjF5ZWFkOFFrSi04SmM5b1FuaEkwVldRVmhQUk1NckY0YmdTdnJZMjExUlJFMFZ0SzZDdW5Qc2k2SHh2c25KZE9vSVprVTd0UDh3?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">매일경제 마켓&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiUkFVX3lxTFBxOUhuSXE2LV9uVURCUUJEbVR0QTNqQ1pTVGNJbk8za2syYjJOY1lDeW1EY05ub2h3Y0RETFF5R2NVMExHTnR0aWlWdFlOQjY3Z3c?oc=5" target="_blank" rel="noopener">젠슨 황 없는 엔비디아…한국과 AI 동맹에도 변화 생기나</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiUkFVX3lxTFBxOUhuSXE2LV9uVURCUUJEbVR0QTNqQ1pTVGNJbk8za2syYjJOY1lDeW1EY05ub2h3Y0RETFF5R2NVMExHTnR0aWlWdFlOQjY3Z3c?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">뉴스1&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiYEFVX3lxTE1lcXBRZmFCVWRyYV9fVkIxSTY2ZEhYUGZXSThNU1hYbWVSX1VGSzNELXZDMDczTm9HOTdCcXAzQVNBeTlOUm1FUXJ1NEh6UjJCanFiZVFqSnpocm5hNGFleA?oc=5" target="_blank" rel="noopener">현대차, 카 셰어링 기업 쏘카와 맞손…자율주행 플랫폼 개발 협력</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiYEFVX3lxTE1lcXBRZmFCVWRyYV9fVkIxSTY2ZEhYUGZXSThNU1hYbWVSX1VGSzNELXZDMDczTm9HOTdCcXAzQVNBeTlOUm1FUXJ1NEh6UjJCanFiZVFqSnpocm5hNGFleA?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">FETV&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE9JN1FQeHhKWndmbWxXdV9LZmtPbi1LNFVLZDI5dFdTWUFLWXVNNjU1c0M2YkE0NWkzZElGZUVpSWdwRVhZMWZFUXZueGwyOWp5Rm1aV2tHd2s4eXFxemJaMzVXbHJSVWFU?oc=5" target="_blank" rel="noopener">현대차, 쏘카·에이펙스와 자율주행 데이터·차량 플랫폼 협력</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE9JN1FQeHhKWndmbWxXdV9LZmtPbi1LNFVLZDI5dFdTWUFLWXVNNjU1c0M2YkE0NWkzZElGZUVpSWdwRVhZMWZFUXZueGwyOWp5Rm1aV2tHd2s4eXFxemJaMzVXbHJSVWFU?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">로이슈&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiekFVX3lxTE5odWdkcVp4QmhyVnkzT0VMSmdncmtzVHhndzBCTUpOeTlQQkNfZFZiUXNVeTVnVVg4Ujg5aDllT0hBSVFDYzBTMFhEQjdpUGZqUURRemNfZDFMMExrVkVJZEVjdU5JaVBnVjZLR2NfaHlkSlBmZXoxUjhR?oc=5" target="_blank" rel="noopener">쏘카·에이펙스모빌리티·현대차, 자율주행 차량 개발·실증 협력</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiekFVX3lxTE5odWdkcVp4QmhyVnkzT0VMSmdncmtzVHhndzBCTUpOeTlQQkNfZFZiUXNVeTVnVVg4Ujg5aDllT0hBSVFDYzBTMFhEQjdpUGZqUURRemNfZDFMMExrVkVJZEVjdU5JaVBnVjZLR2NfaHlkSlBmZXoxUjhR?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE9jTjhucUh2UDRqczBKS0wtcXBCUUdCTGs4eUFrUmJSOGFYdFJSd3lVWDQ0dkQzNVVKcnliUU13VHZubXgzbnJfbW80aUZRc2xSMlRJOENxcFB3eC1wTkRJM3JmNkdPc0JW?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
 </div><h2 class="topic-title">로봇택시 (Robotaxi)</h2>
+<p class="empty">오늘은 새로운 기사가 없습니다.</p>
+<p class="recent-label">📋 최근 기사</p>
 
+<div class="card">
+  <div class="card-meta">KSNV&nbsp;·&nbsp;2026-11-13</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMikwFBVV95cUxNeC1CcmxNUFdoeFU5TVBkNE9Za2U0d09pR0hQR0dDNnFjLU5feGhCa2FQN05tdTZ0NUFBVXhjS0p3bnlnWjdfZVB4aFdlVkw3MktUQU9NNWhJN3RUcXZzaUlaWndVWDFaT2phelkzZ0Qya1VpejgyUTk2TU5uTWJoYm8tVDNEWG9QRFRSTVN2RlRzaHc?oc=5" target="_blank" rel="noopener">Zoox expands Las Vegas service, rolls out next-gen robotaxi</a></h3>
+  
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMikwFBVV95cUxNeC1CcmxNUFdoeFU5TVBkNE9Za2U0d09pR0hQR0dDNnFjLU5feGhCa2FQN05tdTZ0NUFBVXhjS0p3bnlnWjdfZVB4aFdlVkw3MktUQU9NNWhJN3RUcXZzaUlaWndVWDFaT2phelkzZ0Qya1VpejgyUTk2TU5uTWJoYm8tVDNEWG9QRFRSTVN2RlRzaHc?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+</div>
+<div class="card">
+  <div class="card-meta">FOX5 Vegas&nbsp;·&nbsp;2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMinAFBVV95cUxPNTJ5LXhlcV9wY1VXOGUxM3NCU1QtRDc5d2pnWUlKVmhJc1RZUnVmR3JKWXFjVFIxOE1HM1pDSWx6Yi1MREJQRmRpYlNrNzhHd29YLWFUSFd2eTAyYkpXYW5xUHMtaEVKdzg1SG5LdGRrbXZ4b2ZwWFNidTVRNk81Y2tHVFluWUUtekdBQUpSSnpNTF93czlpUjFiN0w?oc=5" target="_blank" rel="noopener">Zoox expands Las Vegas robotaxi service beyond the Strip</a></h3>
+  
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMinAFBVV95cUxPNTJ5LXhlcV9wY1VXOGUxM3NCU1QtRDc5d2pnWUlKVmhJc1RZUnVmR3JKWXFjVFIxOE1HM1pDSWx6Yi1MREJQRmRpYlNrNzhHd29YLWFUSFd2eTAyYkpXYW5xUHMtaEVKdzg1SG5LdGRrbXZ4b2ZwWFNidTVRNk81Y2tHVFluWUUtekdBQUpSSnpNTF93czlpUjFiN0w?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+</div>
 <div class="card">
   <div class="card-meta">Yahoo Autos&nbsp;·&nbsp;2026-11-12</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMipgFBVV95cUxQT25kdVYxdGdsY1o5XzhqRmNxT3kzVHBmUVFQVjhUNXZKUXdVS0s4WEpTdDVHeG9PQjNCRkd2ekJyNHM4OW5lQ1h6TjFQUUNtaUhVd2RDYzBnTVhzVXFFYzdkTXNEZ3dfUXRmam11UGNWaldSUTZRX0NVVU9DV2NTSnlObWxOOVhrUVJTZkg4N25HRHFENGJrdmJUVWpRc1YzSEg3OEln?oc=5" target="_blank" rel="noopener">Texas Tesla Robotaxi Passenger Takes Three Rides, Notices Something Strange About Every Route</a></h3>
@@ -172,22 +113,44 @@
   <a class="card-link" href="https://news.google.com/rss/articles/CBMixAFBVV95cUxPd1Q3RnprcE1rY08tOW4yTUY1d2tPZGZTaFFCbFhYLVBGYmVRSHZOWjBsN2lhWUVIWGtUZmh3aDBiY3p1eFJ5X1lhSnYtTW5vdWtwVlItTkZtQ3hTMVVIT1BIOWV3UW1vazVkZzVLRWhIMXZ4RWxfX2F4bmNJS1ZReVpJVW16NWZpdkJESzZLMm9NVG92MG1seS05RmRPRUN3SDhpRDNVNWZZUHNBVnlJaG45VUN2Y21jMk02X0dhSXY0QzdP?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
 </div>
 <div class="card">
-  <div class="card-meta">The Globe and Mail&nbsp;·&nbsp;2026-11-12</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMi3wFBVV95cUxOUXBkV3NVc0pxNXZhWlBjVE8zd3gwblN0NXVHdmRRTGhZZXd6NFZoNVc2dW9VVi0tRUd4TlBkZUVtYmRod1E1RldDTWtLRUZtODd6MEowYlhXX3hzeEgxcVF1dUpRR1lfSExaR2YwcW5CU3lOMV8yS0VBalJaMEhtUFo0UFQ0SXZUUENqU0VnOS1EaV9fUTZwdlZRUG1Fd0ZpMDZpYW5ZbmxRdzdEckdSSFJhRDhTVzdtOTRXY3lXZUdnTjQ1MTdRQWFULWFrNmg2N3lWSWxENWU0N2lMNHVJ?oc=5" target="_blank" rel="noopener">Tesla's Texas Robotaxi Fleet Tops Waymo: Should You Get Bullish?</a></h3>
+  <div class="card-meta">Electric Vehicles&nbsp;·&nbsp;2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiqAFBVV95cUxPbU5CX3diN2ZDLTBmVUllOEEwYUR2eDZWQWN1Y3pZN3FxQkVOWmRkcEVmbVB2c25ibC1fLXJObERCTk9KWkhuMWR6VTF2VHlCVnFtWXZzQ0ZGVURqb3dyVGhFX2RpSGJocGF6bmZ4MHRtVXdYYmJ1Y0IxMnk4VHgyYzZpa1NsbV9PZzVMT01JUUNJa2liWnBtQ0p1VGV3QmJOZDMzNU1keGg?oc=5" target="_blank" rel="noopener">Zoox Expands Las Vegas Robotaxi Zone, Adds Redesigned Vehicle and Hours</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMi3wFBVV95cUxOUXBkV3NVc0pxNXZhWlBjVE8zd3gwblN0NXVHdmRRTGhZZXd6NFZoNVc2dW9VVi0tRUd4TlBkZUVtYmRod1E1RldDTWtLRUZtODd6MEowYlhXX3hzeEgxcVF1dUpRR1lfSExaR2YwcW5CU3lOMV8yS0VBalJaMEhtUFo0UFQ0SXZUUENqU0VnOS1EaV9fUTZwdlZRUG1Fd0ZpMDZpYW5ZbmxRdzdEckdSSFJhRDhTVzdtOTRXY3lXZUdnTjQ1MTdRQWFULWFrNmg2N3lWSWxENWU0N2lMNHVJ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMiqAFBVV95cUxPbU5CX3diN2ZDLTBmVUllOEEwYUR2eDZWQWN1Y3pZN3FxQkVOWmRkcEVmbVB2c25ibC1fLXJObERCTk9KWkhuMWR6VTF2VHlCVnFtWXZzQ0ZGVURqb3dyVGhFX2RpSGJocGF6bmZ4MHRtVXdYYmJ1Y0IxMnk4VHgyYzZpa1NsbV9PZzVMT01JUUNJa2liWnBtQ0p1VGV3QmJOZDMzNU1keGg?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+</div>
+<details class="more">
+  <summary><span class="more-open">더보기 (5건) ▼</span><span class="more-close">접기 ▲</span></summary>
+  
+<div class="card">
+  <div class="card-meta">Benzinga&nbsp;·&nbsp;2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMi8AFBVV95cUxPc2hKSkRyYWlhdzJlNjZ4bEstWnVySVVBTVRuM3pGOVRWSEhEblV1WkJuVUktb05NSFUtc21wUWVOcVdwcFhVd2hKdFhzOW1ObDROdkNscHQ0ZFdNZ2t3Z1RseTVxal94U053dGpQRVhfTUlQa0tkbUtqam1zaFJwMW90LVV2NG5ZSURYbFZXLVYwQVNxdk5hZzJ6V29ZbG4tVjA4QnVhSURHMzZtZW56RG8wUFVlR3BFYXZlbUFIZFN5TE56N0w0N0E0N3JJX0Z2cUdrZDBQSVV3a3Nodkg5c0ZBWGUzajBQZWlPZ01iZmg?oc=5" target="_blank" rel="noopener">Elon Musk Says 'Robotaxi Works 168 Hours A Week' as Tesla Highlights 24/7 Operations Across All Active Cities</a></h3>
+  
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMi8AFBVV95cUxPc2hKSkRyYWlhdzJlNjZ4bEstWnVySVVBTVRuM3pGOVRWSEhEblV1WkJuVUktb05NSFUtc21wUWVOcVdwcFhVd2hKdFhzOW1ObDROdkNscHQ0ZFdNZ2t3Z1RseTVxal94U053dGpQRVhfTUlQa0tkbUtqam1zaFJwMW90LVV2NG5ZSURYbFZXLVYwQVNxdk5hZzJ6V29ZbG4tVjA4QnVhSURHMzZtZW56RG8wUFVlR3BFYXZlbUFIZFN5TE56N0w0N0E0N3JJX0Z2cUdrZDBQSVV3a3Nodkg5c0ZBWGUzajBQZWlPZ01iZmg?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
 </div>
 <div class="card">
-  <div class="card-meta">Houston Public Media&nbsp;·&nbsp;2026-10-26</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMi4AFBVV95cUxOZHB3a3J3VHAwUlFXYUF0azZQNzVLMmNndUtvOUZjdHk2QTZ6WW9Gd2l6MUtWN3NlZTQyZ1E4TlhSeWVSYlVJYXhhQ1h6WWUxeGc2d2JxbFZiUGRzblFFNkFrWnRGWDJrZ3dzcEcyZTdLRlp0REZzVjdod0lQLUNCMnhjUFluQkpONzdxUU16c3hfZmpQUmpjN0tEcWxQUlVCZ3ZzbGlrXzJUMm56Y2JmdHJoSnI3ZFR6ajhnd25xeHY0WGR3aE9LbWYzSEd2MGVGQ0l2X19sckJxUU5YS1Rxb9IB6AFBVV95cUxQczdjaU40WElhTnV6LUthbmNnRHJ4bUh4ZmtWNDJTYW5GZ2ZxSy15Wm9QZ2x3Qi1pbjV5Q2Vtb0hZay1pb0Vrd0s3WERPQldOcmc3Z3NsNV9mQlRIaWpCSXROU01SNnV4c1hRaGVYZDhlLU8tRE83M3RydTR1X2ZFeGdleTVocWtyNmZBajZCTVZXVnJldFVYdDNadUIweUFoNWdWbmFZYnZ2Ukx0OXNrSnc3RlZ1X2V5UldHM1M2bHliUXlNWGJIeUs4MWRFazkxRExfNUZFVFVkSnJvUWxRUldzZ1BYaWt5?oc=5" target="_blank" rel="noopener">Tesla’s self-driving Robotaxi service expands into greater Houston, with a rocket-shaped service map</a></h3>
+  <div class="card-meta">BeInCrypto&nbsp;·&nbsp;2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMia0FVX3lxTE9EYUNMaUxJQ2pXeGtmMkU3Wk85MUFUUFdkOWY0b01HbE5GbU9seVVKLUNUdGN4QTR2XzVMZHVYTmxQNjhKZF9NRzBFZ25LbllrYXdISzY3QWZ6c19Xc01XNVZmT1o3bzdNOEUw?oc=5" target="_blank" rel="noopener">Tesla Robotaxi Now Works 24/7 While Elon Musk's Robots Head to Optimus Academy</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMi4AFBVV95cUxOZHB3a3J3VHAwUlFXYUF0azZQNzVLMmNndUtvOUZjdHk2QTZ6WW9Gd2l6MUtWN3NlZTQyZ1E4TlhSeWVSYlVJYXhhQ1h6WWUxeGc2d2JxbFZiUGRzblFFNkFrWnRGWDJrZ3dzcEcyZTdLRlp0REZzVjdod0lQLUNCMnhjUFluQkpONzdxUU16c3hfZmpQUmpjN0tEcWxQUlVCZ3ZzbGlrXzJUMm56Y2JmdHJoSnI3ZFR6ajhnd25xeHY0WGR3aE9LbWYzSEd2MGVGQ0l2X19sckJxUU5YS1Rxb9IB6AFBVV95cUxQczdjaU40WElhTnV6LUthbmNnRHJ4bUh4ZmtWNDJTYW5GZ2ZxSy15Wm9QZ2x3Qi1pbjV5Q2Vtb0hZay1pb0Vrd0s3WERPQldOcmc3Z3NsNV9mQlRIaWpCSXROU01SNnV4c1hRaGVYZDhlLU8tRE83M3RydTR1X2ZFeGdleTVocWtyNmZBajZCTVZXVnJldFVYdDNadUIweUFoNWdWbmFZYnZ2Ukx0OXNrSnc3RlZ1X2V5UldHM1M2bHliUXlNWGJIeUs4MWRFazkxRExfNUZFVFVkSnJvUWxRUldzZ1BYaWt5?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMia0FVX3lxTE9EYUNMaUxJQ2pXeGtmMkU3Wk85MUFUUFdkOWY0b01HbE5GbU9seVVKLUNUdGN4QTR2XzVMZHVYTmxQNjhKZF9NRzBFZ25LbllrYXdISzY3QWZ6c19Xc01XNVZmT1o3bzdNOEUw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
 </div>
 <div class="card">
-  <div class="card-meta">The Verge&nbsp;·&nbsp;2026-10-21</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMitwFBVV95cUxPdWM5dnVTbXd6TGlPWF9nSm93V3NiSWl6YXRueFd4VTRraGpDUWprQ3NkNjluZFh4YWJYT19IMnBJSmdDdWJjY0ZDZXN2OTZicUhvMTVtalZCbHRtUkswdDFkTFdXTWd3OVdXLS04c3JNSWEtakVtTDlaekRzX2ZnX0hHMTFZLUZSUVRqWE9xb2ZpYWdRU21FTVBvMTNUeHZhZUxMSWswLW1Dak5FenI3ZDNXYXNnYVU?oc=5" target="_blank" rel="noopener">Tesla says customers can add their own vehicles to the robotaxi fleet next year — will it happen?</a></h3>
+  <div class="card-meta">Electric Vehicles&nbsp;·&nbsp;2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMingFBVV95cUxPVWFfN1hKdDRMNnBVazRmaGtKZkpSQkZ2MXk3dnc1YjRMR2VvSEZMb0tIQnkyejM1cDRPSlUwYzlTTjRSY3BGajVRTi12cE5iM2NfR1hwNkl2YUVuWi1RelFFV2tRNC1ncFpZN2pqeG9wZXFweV82X2FiMXFnaUdXcUp6T2ZhRl91RWEyT1gyMVdBeV9EWnpUUVI0OTdUdw?oc=5" target="_blank" rel="noopener">Tesla Opens Robotaxi Around the Clock in All Eight U.S. Cities</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMitwFBVV95cUxPdWM5dnVTbXd6TGlPWF9nSm93V3NiSWl6YXRueFd4VTRraGpDUWprQ3NkNjluZFh4YWJYT19IMnBJSmdDdWJjY0ZDZXN2OTZicUhvMTVtalZCbHRtUkswdDFkTFdXTWd3OVdXLS04c3JNSWEtakVtTDlaekRzX2ZnX0hHMTFZLUZSUVRqWE9xb2ZpYWdRU21FTVBvMTNUeHZhZUxMSWswLW1Dak5FenI3ZDNXYXNnYVU?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMingFBVV95cUxPVWFfN1hKdDRMNnBVazRmaGtKZkpSQkZ2MXk3dnc1YjRMR2VvSEZMb0tIQnkyejM1cDRPSlUwYzlTTjRSY3BGajVRTi12cE5iM2NfR1hwNkl2YUVuWi1RelFFV2tRNC1ncFpZN2pqeG9wZXFweV82X2FiMXFnaUdXcUp6T2ZhRl91RWEyT1gyMVdBeV9EWnpUUVI0OTdUdw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
 </div>
+<div class="card">
+  <div class="card-meta">KTNV Las Vegas&nbsp;·&nbsp;2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMimAFBVV95cUxNb1BJbFJFZVlNZGJnR1pkM2xtbGxqdlNsd0dUbmhwZzFvWVNFQ1RWV05NZFFyU1laU1haM2o2b3RESEJ3a2M4ckFzTThqbDE0OFA3TGpfM2o1bmNnTzVxbmFEWndCQkVNbHdpQ2d1enFVUnFiei1jZVhwdDFDN0xiNGhsbFdEeE9TSHVZUEtObDBUNFRGRmdqdQ?oc=5" target="_blank" rel="noopener">Zoox robotaxis expand into downtown Las Vegas and the Arts District</a></h3>
+  
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMimAFBVV95cUxNb1BJbFJFZVlNZGJnR1pkM2xtbGxqdlNsd0dUbmhwZzFvWVNFQ1RWV05NZFFyU1laU1haM2o2b3RESEJ3a2M4ckFzTThqbDE0OFA3TGpfM2o1bmNnTzVxbmFEWndCQkVNbHdpQ2d1enFVUnFiei1jZVhwdDFDN0xiNGhsbFdEeE9TSHVZUEtObDBUNFRGRmdqdQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+</div>
+<div class="card">
+  <div class="card-meta">Drive Tesla Canada&nbsp;·&nbsp;2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMifkFVX3lxTE0wTU82dkZVS25CZ1FDemxsSlB6NHZHenNjblY3QkhaZ3c0MVlPV21xZWxGVXA5cDNCSERhRmxDY0o1Y0RBQ1lwazRGRzVYVDl4N3o2eVlxMXA3QkNhT3lHYXRWVUtYMjB0Um0wVGhEcFM2UUM0eC0yVlJ1X2NpZw?oc=5" target="_blank" rel="noopener">Tesla Robotaxi reaches milestone with 24/7 service in every city</a></h3>
+  
+  <a class="card-link" href="https://news.google.com/rss/articles/CBMifkFVX3lxTE0wTU82dkZVS25CZ1FDemxsSlB6NHZHenNjblY3QkhaZ3c0MVlPV21xZWxGVXA5cDNCSERhRmxDY0o1Y0RBQ1lwazRGRzVYVDl4N3o2eVlxMXA3QkNhT3lHYXRWVUtYMjB0Um0wVGhEcFM2UUM0eC0yVlJ1X2NpZw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
+</div>
+</details>
 </body>
 </html>
