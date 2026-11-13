@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-이미징 레이더 / 60GHz 헬스케어 / 자율주행 / 로봇택시 뉴스 자동 수집 + HTML 생성
+이미징 레이더 / 자율주행 / 로봇택시 뉴스 자동 수집 + HTML 생성
 【완전 무료 버전 - API 키 불필요】
 """
 
@@ -50,24 +50,12 @@ TOPICS = {
             gnews('"4D 레이더" 자율주행', lang="ko", country="KR"),
         ],
     },
-    "60ghz_healthcare": {
-        "label": "60GHz 레이더 헬스케어",
-        "feeds": [
-            gnews('"60GHz radar" health'),
-            gnews('"mmWave radar" patient monitoring'),
-            gnews('"60GHz radar" vital sign'),
-            gnews('"contactless radar" healthcare'),
-            gnews('"60GHz 레이더" 헬스케어', lang="ko", country="KR"),
-            gnews('"밀리미터파 레이더" 생체신호', lang="ko", country="KR"),
-        ],
-    },
     "autonomous_driving": {
         "label": "자율주행 (Autonomous Driving)",
         "feeds": [
             gnews('"autonomous driving" technology'),
             gnews('"self-driving" car safety'),
             gnews('"autonomous vehicle" sensor'),
-            # 한국어: 정확한 구문 + 연예/영화 제외
             gnews('"자율주행차" -영화 -드라마 -배우', lang="ko", country="KR"),
             gnews('"자율주행" 기술 -영화 -드라마', lang="ko", country="KR"),
             gnews('"자율주행" ADAS 상용화', lang="ko", country="KR"),
@@ -80,7 +68,6 @@ TOPICS = {
             gnews('Waymo robotaxi 2026'),
             gnews('Tesla robotaxi autonomous'),
             gnews('"robotaxi" regulation OR policy'),
-            # 한국어: 정확한 구문으로 제한
             gnews('"로봇택시" -영화 -드라마', lang="ko", country="KR"),
             gnews('"자율주행 택시" 상용 -영화', lang="ko", country="KR"),
         ],
@@ -343,15 +330,12 @@ def main():
                     continue
                 if not art["title"] or art["title"] == "[Removed]":
                     continue
-                # 무관한 기사 제외 (연예/영화 등)
                 if is_irrelevant(art["title"]):
                     print(f"    [무관 기사 제거] {art['title'][:50]}")
                     continue
-                # 제목 유사도 중복 제거
                 if is_duplicate_title(art["title"], seen_titles):
                     print(f"    [중복제목 제거] {art['title'][:50]}")
                     continue
-                # 30일 이내 기사만
                 if art["published"] and art["published"] < cutoff_date:
                     continue
 
