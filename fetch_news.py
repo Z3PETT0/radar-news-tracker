@@ -21,7 +21,8 @@ DOCS_DIR     = Path("docs")
 HISTORY_FILE = DATA_DIR / "seen_articles.json"
 
 MAX_NEW_ARTICLES    = 15
-MAX_RECENT_ARTICLES = 5
+MAX_RECENT_ARTICLES = 10   # 신규 기사가 없을 때 보여줄 최근 기사 수
+VISIBLE_COUNT       = 5    # 처음부터 보여줄 기사 수 (나머지는 '더보기'로 펼침)
 RECENT_DAYS_KEEP    = 7
 
 # 어떤 주제든 공통으로 걸러낼 키워드 (제목에 포함되면 제외)
@@ -229,6 +230,19 @@ def card_html(art):
 </div>"""
 
 
+def cards_with_more(arts):
+    """처음 VISIBLE_COUNT개는 바로 보여주고, 나머지는 '더보기' 버튼으로 펼침"""
+    html = "".join(card_html(a) for a in arts[:VISIBLE_COUNT])
+    rest = arts[VISIBLE_COUNT:]
+    if rest:
+        html += f"""
+<details class="more">
+  <summary><span class="more-open">더보기 ({len(rest)}건) ▼</span><span class="more-close">접기 ▲</span></summary>
+  {"".join(card_html(a) for a in rest)}
+</details>"""
+    return html
+
+
 def build_html(new_results, all_results, generated_at):
     sections_html = ""
     for topic_key, info in TOPICS.items():
@@ -238,14 +252,12 @@ def build_html(new_results, all_results, generated_at):
 
         sections_html += f'<h2 class="topic-title">{info["label"]}</h2>\n'
         if new_arts:
-            for art in new_arts:
-                sections_html += card_html(art)
+            sections_html += cards_with_more(new_arts)
         else:
             sections_html += '<p class="empty">오늘은 새로운 기사가 없습니다.</p>\n'
             if recent_arts:
                 sections_html += '<p class="recent-label">📋 최근 기사</p>\n'
-                for art in recent_arts:
-                    sections_html += card_html(art)
+                sections_html += cards_with_more(recent_arts)
 
     page = f"""<!DOCTYPE html>
 <html lang="ko">
@@ -287,6 +299,17 @@ def build_html(new_results, all_results, generated_at):
     font-size: 13px; color: #555; font-weight: 600;
     margin: 16px 0 10px; padding-left: 4px;
   }}
+  details.more > summary {{
+    list-style: none; cursor: pointer; text-align: center;
+    background: #fff; border: 1px solid #d4d4d8; border-radius: 10px;
+    padding: 12px; margin-bottom: 14px;
+    font-size: 14px; font-weight: 600; color: #2563eb;
+  }}
+  details.more > summary::-webkit-details-marker {{ display: none; }}
+  details.more > summary:hover {{ background: #f0f5ff; }}
+  details.more .more-close {{ display: none; }}
+  details.more[open] .more-open {{ display: none; }}
+  details.more[open] .more-close {{ display: inline; }}
 </style>
 </head>
 <body>
