@@ -23,6 +23,8 @@ jobs:
 
       # feedparser 등 외부 패키지 불필요 - 표준 라이브러리만 사용
       - name: 뉴스 수집 + 페이지 생성
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
         run: python fetch_news.py
 
       - name: 변경사항 커밋 및 푸시
