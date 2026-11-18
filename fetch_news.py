@@ -62,6 +62,16 @@ TOPICS = {
             gnews('"자율주행" ADAS 상용화', lang="ko", country="KR"),
         ],
     },
+    "amr_logistics": {
+        "label": "자율주행 로봇·물류 (AMR / Logistics)",
+        "feeds": [
+            gnews('AMR "자율주행" 물류 로봇', lang="ko", country="KR"),
+            gnews('"자율주행 플랫폼" 로봇 -영화 -드라마', lang="ko", country="KR"),
+            gnews('"자율주행" 항만 OR 물류 OR 스마트팩토리 -영화', lang="ko", country="KR"),
+            gnews('"autonomous mobile robot" AMR warehouse'),
+            gnews('"autonomous" port OR terminal automation logistics'),
+        ],
+    },
     "robotaxi": {
         "label": "로봇택시 (Robotaxi)",
         "feeds": [
@@ -134,7 +144,11 @@ def is_irrelevant(title):
     """제목에 제외 키워드가 포함되면 True"""
     title_lower = title.lower()
     for kw in EXCLUDE_KEYWORDS:
-        if kw in title_lower:
+        if kw.isascii():
+            # 영문 키워드는 단어 단위로만 매칭 (cost, Boston 등 오탐 방지)
+            if re.search(r"\b" + re.escape(kw) + r"\b", title_lower):
+                return True
+        elif kw in title_lower:
             return True
     return False
 
