@@ -48,11 +48,13 @@ GOV_PATTERN = re.compile(
 G2B_KEY_ENV = "DATA_GO_KR_KEY"
 G2B_KEYWORDS = ["레이더", "자율주행", "로봇", "AMR", "라이다"]
 G2B_BASES = [
-    "https://apis.data.go.kr/1230000/ad/BidPublicInfoService02",   # 포털에 표시된 공식 End Point
-    "https://apis.data.go.kr/1230000/ad/BidPublicInfoService",
+    "https://apis.data.go.kr/1230000/ad/BidPublicInfoService02",   # 포털 End Point (참고문서 v1.3)
 ]
-G2B_OPERATIONS = ["getBidPblancListInfoServcPPSSrch", "getBidPblancListInfoThngPPSSrch"]  # 용역, 물품
-G2B_DAYS = 7
+G2B_OPERATIONS = [
+    "getBidPblancListInfoServcPPSSrch02",   # 나라장터검색조건에 의한 입찰공고 용역조회
+    "getBidPblancListInfoThngPPSSrch02",    # 나라장터검색조건에 의한 입찰공고 물품조회
+]
+G2B_DAYS = 6   # 참고문서 v1.3: 조회기간 최대 7일 → 여유 있게 6일 전 0시 ~ 현재
 
 
 def gnews(query, lang="en", country="US"):
@@ -298,8 +300,8 @@ def fetch_g2b():
                 params = {
                     "serviceKey": key, "pageNo": 1, "numOfRows": 30, "type": "json",
                     "inqryDiv": 1,
-                    "inqryBgnDt": bgn.strftime("%Y%m%d0000"),
-                    "inqryEndDt": now.strftime("%Y%m%d2359"),
+                    "inqryBgnDt": bgn.strftime("%Y%m%d") + "0000",
+                    "inqryEndDt": now.strftime("%Y%m%d%H%M"),
                     "bidNtceNm": kw,
                 }
                 url = f"{base}/{op}?{urllib.parse.urlencode(params)}"
@@ -314,7 +316,7 @@ def fetch_g2b():
                             body = e.read().decode("utf-8", "replace")[:300].replace("\n", " ")
                         except Exception:
                             pass
-                    tag = (base.split("/")[-1], op[-12:])
+                    tag = (base.split("/")[-1], op)
                     if tag not in warned:      # 같은 주소·기능의 오류는 처음 한 번만 자세히 출력
                         warned.add(tag)
                         print(f"    [나라장터 경고] {base} / {op}: {str(e)[:80]}")
