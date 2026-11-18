@@ -362,8 +362,9 @@ def cards_with_more(arts):
     if rest:
         html += f"""
 <details class="more">
-  <summary><span class="more-open">더보기 ({len(rest)}건) ▼</span><span class="more-close">접기 ▲</span></summary>
+  <summary>더보기 ({len(rest)}건) ▼</summary>
   {"".join(card_html(a) for a in rest)}
+  <button type="button" class="more-collapse" onclick="var d=this.closest('details');d.open=false;d.scrollIntoView({{block:'center'}});">접기 ▲</button>
 </details>"""
     return html
 
@@ -438,9 +439,14 @@ def build_html(new_results, all_results, generated_at):
   }}
   details.more > summary::-webkit-details-marker {{ display: none; }}
   details.more > summary:hover {{ background: #f0f5ff; }}
-  details.more .more-close {{ display: none; }}
-  details.more[open] .more-open {{ display: none; }}
-  details.more[open] .more-close {{ display: inline; }}
+  details.more[open] > summary {{ display: none; }}
+  .more-collapse {{
+    display: block; width: 100%; cursor: pointer; text-align: center;
+    background: #fff; border: 1px solid #d4d4d8; border-radius: 10px;
+    padding: 12px; margin-bottom: 14px; font-family: inherit;
+    font-size: 14px; font-weight: 600; color: #2563eb;
+  }}
+  .more-collapse:hover {{ background: #f0f5ff; }}
 </style>
 </head>
 <body>
