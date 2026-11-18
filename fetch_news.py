@@ -28,7 +28,7 @@ RECENT_DAYS_KEEP    = 7
 
 # 어떤 주제든 공통으로 걸러낼 키워드 (제목에 포함되면 제외)
 EXCLUDE_KEYWORDS = [
-    "영화", "드라마", "배우", "예고편", "리뷰", "티저", "ost",
+    "영화", "드라마", "배우", "예고편", "티저", "ost",
     "연예", "아이돌", "콘서트", "앨범", "뮤직비디오",
     "recipe", "cooking", "fashion", "celebrity", "trailer",
 ]
