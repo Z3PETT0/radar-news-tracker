@@ -48,10 +48,8 @@ GOV_PATTERN = re.compile(
 G2B_KEY_ENV = "DATA_GO_KR_KEY"
 G2B_KEYWORDS = ["레이더", "자율주행", "로봇", "AMR", "라이다"]
 G2B_BASES = [
+    "https://apis.data.go.kr/1230000/ad/BidPublicInfoService02",   # 포털에 표시된 공식 End Point
     "https://apis.data.go.kr/1230000/ad/BidPublicInfoService",
-    "https://apis.data.go.kr/1230000/BidPublicInfoService04",
-    "http://apis.data.go.kr/1230000/ad/BidPublicInfoService",
-    "http://apis.data.go.kr/1230000/BidPublicInfoService04",
 ]
 G2B_OPERATIONS = ["getBidPblancListInfoServcPPSSrch", "getBidPblancListInfoThngPPSSrch"]  # 용역, 물품
 G2B_DAYS = 7
