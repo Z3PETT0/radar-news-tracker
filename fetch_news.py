@@ -9,6 +9,7 @@ import json
 import datetime
 import hashlib
 import html as html_mod
+import os
 import re
 import time
 import urllib.request
@@ -33,6 +34,27 @@ EXCLUDE_KEYWORDS = [
 ]
 
 
+# ── 정부과제 · 입찰 관련 설정 ─────────────────────────────
+GOV_KEY = "gov_bids"
+GOV_PATTERN = re.compile(
+    r"정부\s?과제|국책\s?과제|국가\s?과제|연구개발\s?과제|R&D\s?과제|과제\s?(?:공고|공모|선정)|"
+    r"공모|입찰|발주|공고|사업자\s?선정|수행기관|주관기관|실증\s?사업|시범\s?사업|지원\s?사업|"
+    r"나라장터|조달청|NTIS|IITP|KIAT|"
+    r"\b(?:grant|grants|funding|tender|RFP|RFQ|solicitation|BAA|Horizon Europe|call for proposals)\b",
+    re.IGNORECASE,
+)
+
+# 나라장터(공공데이터포털) 공식 공고 조회 — 키가 없으면 자동으로 건너뜀
+G2B_KEY_ENV = "DATA_GO_KR_KEY"
+G2B_KEYWORDS = ["레이더", "자율주행", "로봇", "AMR", "라이다"]
+G2B_BASES = [
+    "https://apis.data.go.kr/1230000/ad/BidPublicInfoService",
+    "https://apis.data.go.kr/1230000/BidPublicInfoService04",
+]
+G2B_OPERATIONS = ["getBidPblancListInfoServcPPSSrch", "getBidPblancListInfoThngPPSSrch"]  # 용역, 물품
+G2B_DAYS = 7
+
+
 def gnews(query, lang="en", country="US"):
     q = urllib.parse.quote(query)
     ceid = f"{country}:{lang}"
@@ -40,6 +62,20 @@ def gnews(query, lang="en", country="US"):
 
 
 TOPICS = {
+    GOV_KEY: {
+        "label": "🏛 정부과제 · 입찰 (Gov Projects & Bids)",
+        "gov": True,
+        "feeds": [
+            gnews('"정부과제" 자율주행 OR 레이더 OR 로봇', lang="ko", country="KR"),
+            gnews('"실증사업" 자율주행 공모 OR 선정', lang="ko", country="KR"),
+            gnews('"R&D 과제" 레이더 OR 센서 OR 자율주행 선정', lang="ko", country="KR"),
+            gnews('자율주행 입찰 OR 발주 OR "사업자 선정"', lang="ko", country="KR"),
+            gnews('로봇 실증 공모 OR "지원사업" 모집', lang="ko", country="KR"),
+            gnews('NTIS 신규과제 공고 자율주행 OR 로봇 OR 센서', lang="ko", country="KR"),
+            gnews('"autonomous vehicle" grant OR funding program', ),
+            gnews('"request for proposals" autonomous OR radar OR robotics'),
+        ],
+    },
     "imaging_radar": {
         "label": "이미징 레이더 (자동차 · 산업 · 로봇)",
         "feeds": [
@@ -227,6 +263,77 @@ def fetch_rss(url):
     return articles
 
 
+def is_gov(art):
+    return bool(GOV_PATTERN.search(art["title"] + " " + art.get("summary", "")))
+
+
+def _g2b_items(data):
+    try:
+        items = data["response"]["body"]["items"]
+    except (KeyError, TypeError):
+        return []
+    if isinstance(items, dict):
+        items = items.get("item", [])
+    if isinstance(items, dict):
+        items = [items]
+    return items or []
+
+
+def fetch_g2b():
+    """나라장터 입찰공고(용역·물품)를 키워드별로 조회. 인증키(DATA_GO_KR_KEY)가 없으면 건너뜀."""
+    key = os.environ.get(G2B_KEY_ENV, "").strip()
+    if not key:
+        print("  [나라장터] DATA_GO_KR_KEY 없음 → 건너뜀")
+        return []
+    key = urllib.parse.unquote(key)
+    now = datetime.datetime.now()
+    bgn = now - datetime.timedelta(days=G2B_DAYS)
+    out, seen_no = [], set()
+    working_base = None
+    for kw in G2B_KEYWORDS:
+        for op in G2B_OPERATIONS:
+            bases = [working_base] if working_base else G2B_BASES
+            for base in bases:
+                params = {
+                    "serviceKey": key, "pageNo": 1, "numOfRows": 30, "type": "json",
+                    "inqryDiv": 1,
+                    "inqryBgnDt": bgn.strftime("%Y%m%d0000"),
+                    "inqryEndDt": now.strftime("%Y%m%d2359"),
+                    "bidNtceNm": kw,
+                }
+                url = f"{base}/{op}?{urllib.parse.urlencode(params)}"
+                try:
+                    req = urllib.request.Request(url, headers=HEADERS)
+                    with urllib.request.urlopen(req, timeout=20) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                except Exception as e:
+                    print(f"    [나라장터 경고] {kw}/{op[-12:]}: {str(e)[:80]}")
+                    continue
+                working_base = base
+                for it in _g2b_items(data):
+                    no = str(it.get("bidNtceNo", "")) + str(it.get("bidNtceOrd", ""))
+                    name = (it.get("bidNtceNm") or "").strip()
+                    if not name or no in seen_no:
+                        continue
+                    seen_no.add(no)
+                    inst = it.get("ntceInsttNm") or it.get("dminsttNm") or ""
+                    close = (it.get("bidClseDt") or "")[:16]
+                    summary = " · ".join(filter(None, [
+                        f"수요기관: {inst}" if inst else "",
+                        f"마감: {close}" if close else "",
+                    ]))
+                    link = it.get("bidNtceDtlUrl") or it.get("bidNtceUrl") or "https://www.g2b.go.kr"
+                    out.append({
+                        "title": name, "url": link, "source": "나라장터(공식)",
+                        "published": (it.get("bidNtceDt") or "")[:10],
+                        "summary": summary, "gov": True, "official": True,
+                    })
+                break  # 이 base가 응답했으면 다음 base는 시도 안 함
+            time.sleep(0.5)
+    print(f"  [나라장터] {len(out)}건")
+    return out
+
+
 def card_html(art):
     title   = art["title"].replace("<", "&lt;").replace(">", "&gt;")
     source  = art.get("source", "")
@@ -234,6 +341,10 @@ def card_html(art):
     summary = art.get("summary", "")
     url     = art["url"]
     meta    = "&nbsp;·&nbsp;".join(filter(None, [source, pub]))
+    if art.get("official"):
+        meta = '<span class="badge official">공식 공고</span> ' + meta
+    elif art.get("gov"):
+        meta = '<span class="badge">🏛 과제·입찰</span> ' + meta
     summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
     return f"""
 <div class="card">
@@ -302,6 +413,12 @@ def build_html(new_results, all_results, generated_at):
     background: #fff; border: 1px solid #e5e5e5;
     border-radius: 10px; padding: 16px 20px; margin-bottom: 14px;
   }}
+  .badge {{
+    display: inline-block; font-size: 11px; font-weight: 600;
+    background: #fef3c7; color: #92400e; border-radius: 6px;
+    padding: 1px 7px; margin-right: 4px;
+  }}
+  .badge.official {{ background: #dcfce7; color: #166534; }}
   .card-meta  {{ font-size: 12px; color: #888; margin-bottom: 6px; }}
   .card-title {{ font-size: 16px; margin: 0 0 8px; }}
   .card-title a {{ color: #1a1a1a; text-decoration: none; }}
@@ -376,6 +493,7 @@ def main():
                 if art["published"] and art["published"] < cutoff_date:
                     continue
 
+                art["gov"] = bool(info.get("gov")) or is_gov(art)
                 seen_urls.add(art["url"])
                 seen_titles.append(normalize_title(art["title"]))
                 all_arts.append(art)
@@ -390,6 +508,35 @@ def main():
         new_results[topic_key] = new_arts[:MAX_NEW_ARTICLES]
         all_results[topic_key] = all_arts
         print(f"  → 신규 {len(new_results[topic_key])}건 / 전체 {len(all_arts)}건")
+
+    # 다른 주제에서 과제·입찰 키워드가 잡힌 기사 + 나라장터 공식 공고를 정부과제 섹션에 합치기
+    print(f"\n=== 정부과제 · 입찰 통합 ===")
+    gov_all = list(all_results.get(GOV_KEY, []))
+    gov_new = list(new_results.get(GOV_KEY, []))
+    gov_urls = {a["url"] for a in gov_all}
+    for key in TOPICS:
+        if key == GOV_KEY:
+            continue
+        for a in all_results.get(key, []):
+            if a.get("gov") and a["url"] not in gov_urls:
+                gov_urls.add(a["url"])
+                gov_all.append(a)
+                if a in new_results.get(key, []):
+                    gov_new.append(a)
+    for a in fetch_g2b():
+        if a["url"] in gov_urls:
+            continue
+        gov_urls.add(a["url"])
+        gov_all.append(a)
+        uid = make_id(a["url"])
+        if uid not in seen:
+            new_seen[uid] = today
+            gov_new.append(a)
+    gov_all.sort(key=lambda a: a["published"], reverse=True)
+    gov_new.sort(key=lambda a: a["published"], reverse=True)
+    all_results[GOV_KEY] = gov_all
+    new_results[GOV_KEY] = gov_new[:MAX_NEW_ARTICLES * 2]
+    print(f"  → 신규 {len(new_results[GOV_KEY])}건 / 전체 {len(gov_all)}건")
 
     generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M KST")
     build_html(new_results, all_results, generated_at)
