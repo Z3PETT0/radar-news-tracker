@@ -346,12 +346,16 @@ def card_html(art):
     elif art.get("gov"):
         meta = '<span class="badge">🏛 과제·입찰</span> ' + meta
     summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
+    if art.get("official"):
+        link_html = f'<a class="bid-btn" href="{url}" target="_blank" rel="noopener">📄 공고 바로가기 →</a>'
+    else:
+        link_html = f'<a class="card-link" href="{url}" target="_blank" rel="noopener">원문 보기 →</a>'
     return f"""
 <div class="card">
   <div class="card-meta">{meta}</div>
   <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
   {summary_html}
-  <a class="card-link" href="{url}" target="_blank" rel="noopener">원문 보기 →</a>
+  {link_html}
 </div>"""
 
 
@@ -419,6 +423,12 @@ def build_html(new_results, all_results, generated_at):
     background: #fef3c7; color: #92400e; border-radius: 6px;
     padding: 1px 7px; margin-right: 4px;
   }}
+  .bid-btn {{
+    display: inline-block; background: #16a34a; color: #fff !important;
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    padding: 8px 14px; border-radius: 8px;
+  }}
+  .bid-btn:hover {{ background: #15803d; }}
   .badge.official {{ background: #dcfce7; color: #166534; }}
   .card-meta  {{ font-size: 12px; color: #888; margin-bottom: 6px; }}
   .card-title {{ font-size: 16px; margin: 0 0 8px; }}
