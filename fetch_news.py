@@ -50,6 +50,8 @@ G2B_KEYWORDS = ["레이더", "자율주행", "로봇", "AMR", "라이다"]
 G2B_BASES = [
     "https://apis.data.go.kr/1230000/ad/BidPublicInfoService",
     "https://apis.data.go.kr/1230000/BidPublicInfoService04",
+    "http://apis.data.go.kr/1230000/ad/BidPublicInfoService",
+    "http://apis.data.go.kr/1230000/BidPublicInfoService04",
 ]
 G2B_OPERATIONS = ["getBidPblancListInfoServcPPSSrch", "getBidPblancListInfoThngPPSSrch"]  # 용역, 물품
 G2B_DAYS = 7
@@ -290,6 +292,7 @@ def fetch_g2b():
     bgn = now - datetime.timedelta(days=G2B_DAYS)
     out, seen_no = [], set()
     working_base = None
+    warned = set()
     for kw in G2B_KEYWORDS:
         for op in G2B_OPERATIONS:
             bases = [working_base] if working_base else G2B_BASES
@@ -307,7 +310,18 @@ def fetch_g2b():
                     with urllib.request.urlopen(req, timeout=20) as resp:
                         data = json.loads(resp.read().decode("utf-8"))
                 except Exception as e:
-                    print(f"    [나라장터 경고] {kw}/{op[-12:]}: {str(e)[:80]}")
+                    body = ""
+                    if hasattr(e, "read"):
+                        try:
+                            body = e.read().decode("utf-8", "replace")[:300].replace("\n", " ")
+                        except Exception:
+                            pass
+                    tag = (base.split("/")[-1], op[-12:])
+                    if tag not in warned:      # 같은 주소·기능의 오류는 처음 한 번만 자세히 출력
+                        warned.add(tag)
+                        print(f"    [나라장터 경고] {base} / {op}: {str(e)[:80]}")
+                        if body:
+                            print(f"      응답내용: {body}")
                     continue
                 working_base = base
                 for it in _g2b_items(data):
