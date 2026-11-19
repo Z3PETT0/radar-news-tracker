@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  models: read      # GitHub Models(무료 AI) 사용 권한
 
 jobs:
   update:
@@ -20,7 +19,7 @@ jobs:
       - name: Fetch news
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python fetch_news.py
       - name: Commit changes
         run: |
