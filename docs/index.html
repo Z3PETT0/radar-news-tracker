@@ -9,233 +9,338 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="레이더 뉴스">
 <style>
+  :root { --blue:#2f5fa6; --line:#e6dfcc; --muted:#8a8272; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
                  "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-    max-width: 800px; margin: 0 auto;
-    padding: 24px 16px 80px;
-    background: #f7f7f8; color: #1a1a1a; line-height: 1.6;
+    max-width: 1100px; margin: 0 auto; padding: 16px 16px 80px;
+    background: #f6f1e4; color: #2f2b24; line-height: 1.5;
   }
-  header { margin-bottom: 32px; }
-  h1 { font-size: 24px; margin-bottom: 4px; }
-  .updated { color: #666; font-size: 14px; }
+  header { margin-bottom: 12px; }
+  h1 { font-size: 22px; margin: 0 0 2px; }
+  .updated { color: #6b6455; font-size: 13px; }
+
+  .summary-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 8px; }
+  .sum { background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:8px 6px; text-align:center; }
+  .sum b { display:block; font-size:20px; line-height:1.2; }
+  .sum span { font-size:11px; color:#6b6455; }
+  .sum.hot b { color:#dc2626; }
+  a.sum { color: inherit; text-decoration: none; }
+  a.sum:hover { background: #fbf7ea; }
+
+  nav.tabs {
+    position: sticky; top: 0; z-index: 10; display: flex; gap: 6px; overflow-x: auto;
+    padding: 8px 0; margin: 0 0 8px; background: #f6f1e4d9; backdrop-filter: blur(6px);
+    scrollbar-width: none;
+  }
+  nav.tabs::-webkit-scrollbar { display: none; }
+  nav.tabs a {
+    flex: 0 0 auto; font-size: 13px; font-weight: 600; color: var(--blue); text-decoration: none;
+    background:#fffdf8; border: 1px solid #d8cfb8; border-radius: 999px; padding: 6px 12px; white-space: nowrap;
+  }
+  nav.tabs a:hover { background: #f3ecd6; }
+
+  details.sec { scroll-margin-top: 56px; margin-top: 14px; }
   .topic-title {
-    font-size: 19px; margin-top: 40px; margin-bottom: 16px;
-    padding-bottom: 8px; border-bottom: 2px solid #2563eb;
+    list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    font-size: 17px; font-weight: 700; padding: 8px 2px; border-bottom: 2px solid var(--blue); margin-bottom: 12px;
   }
-  .card {
-    background: #fff; border: 1px solid #e5e5e5;
-    border-radius: 10px; padding: 16px 20px; margin-bottom: 14px;
+  .topic-title::-webkit-details-marker { display: none; }
+  .topic-title::after { content: "▾"; color: var(--blue); margin-left: 8px; }
+  details.sec:not([open]) > .topic-title::after { content: "▸"; }
+  .topic-title span:first-child { flex: 1; }
+  .cnt { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .sub-label { font-size: 13px; color: #5c5546; font-weight: 700; margin: 12px 0 8px 2px; }
+  .sub-label small { font-weight: 400; color: var(--muted); }
+  .empty { color: #9a927f; font-size: 14px; margin: 4px 2px 8px; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 760px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .card { background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:10px 14px; }
+  .card-meta { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  .card-title { font-size: 15px; margin: 0 0 4px; line-height: 1.4; }
+  .card-title a { color:#2f2b24; text-decoration:none; }
+  .card-title a:hover { text-decoration: underline; color: var(--blue); }
+  .card-summary {
+    font-size: 13px; color:#4a453a; margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
+
   .badge {
-    display: inline-block; font-size: 11px; font-weight: 600;
-    background: #fef3c7; color: #92400e; border-radius: 6px;
-    padding: 1px 7px; margin-right: 4px;
+    display:inline-block; font-size:11px; font-weight:600; background:#f5e7c0; color:#7a4b12;
+    border-radius:6px; padding:0 6px; margin-right:4px;
   }
-  .card-ai {
-    font-size: 13px; color: #065f46; background: #ecfdf5;
-    border-radius: 6px; padding: 6px 10px; margin: 0 0 10px;
+  .badge.new { background:#e0e6f3; color:#2f5fa6; }
+
+  ul.bids { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+  li.bid {
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:10px 14px;
   }
+  .bid-main { min-width: 0; flex: 1; }
+  .bid-title { font-size: 14px; font-weight: 700; color:#2f2b24; text-decoration:none; line-height:1.4; }
+  .bid-title:hover { text-decoration: underline; color: var(--blue); }
+  .bid-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .bid-ai { font-size: 12px; margin-top: 4px; padding: 2px 8px; border-radius: 6px; display: inline-block; }
+  .bid-ai.high { background:#e1ecd2; color:#3d5a1f; }
+  .bid-ai.mid  { background:#efe9d6; color:#5c5546; }
+  .bid-side { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex: 0 0 auto; }
+  .dd { font-size: 12px; font-weight: 700; color:#5c5546; }
+  .dd.urgent { color:#dc2626; }
+  .dd.none { color:#999; font-weight:500; }
   .bid-btn {
-    display: inline-block; background: #16a34a; color: #fff !important;
-    font-size: 13px; font-weight: 600; text-decoration: none;
-    padding: 8px 14px; border-radius: 8px;
+    background:#5a8a3c; color:#fff !important; font-size:12px; font-weight:700;
+    text-decoration:none; padding:5px 12px; border-radius:8px; white-space: nowrap;
   }
-  .bid-btn:hover { background: #15803d; }
-  .badge.official { background: #dcfce7; color: #166534; }
-  .card-meta  { font-size: 12px; color: #888; margin-bottom: 6px; }
-  .card-title { font-size: 16px; margin: 0 0 8px; }
-  .card-title a { color: #1a1a1a; text-decoration: none; }
-  .card-title a:hover { text-decoration: underline; }
-  .card-summary { font-size: 14px; color: #333; margin: 0 0 8px; }
-  .card-link { font-size: 13px; color: #2563eb; text-decoration: none; }
-  .empty { color: #999; font-size: 14px; margin-bottom: 8px; }
-  .recent-label {
-    font-size: 13px; color: #555; font-weight: 600;
-    margin: 16px 0 10px; padding-left: 4px;
+  .bid-btn:hover { background:#4a7330; }
+  @media (min-width: 760px) { ul.bids { grid-template-columns: 1fr 1fr; } }
+
+  details.more > summary, .more-collapse {
+    list-style: none; cursor: pointer; text-align: center; display:block; width:100%;
+    background:#fffdf8; border:1px solid #d8cfb8; border-radius:10px; padding:10px;
+    margin: 10px 0 4px; font-family: inherit; font-size:13px; font-weight:600; color: var(--blue);
   }
-  details.more > summary {
-    list-style: none; cursor: pointer; text-align: center;
-    background: #fff; border: 1px solid #d4d4d8; border-radius: 10px;
-    padding: 12px; margin-bottom: 14px;
-    font-size: 14px; font-weight: 600; color: #2563eb;
-  }
-  details.more > summary::-webkit-details-marker { display: none; }
-  details.more > summary:hover { background: #f0f5ff; }
+  details.more > summary::-webkit-details-marker { display:none; }
+  details.more > summary:hover, .more-collapse:hover { background:#f3ecd6; }
   details.more[open] > summary { display: none; }
-  .more-collapse {
-    display: block; width: 100%; cursor: pointer; text-align: center;
-    background: #fff; border: 1px solid #d4d4d8; border-radius: 10px;
-    padding: 12px; margin-bottom: 14px; font-family: inherit;
-    font-size: 14px; font-weight: 600; color: #2563eb;
-  }
-  .more-collapse:hover { background: #f0f5ff; }
+  details.more[open] { margin-top: 10px; }
 </style>
 </head>
 <body>
 <header>
   <h1>📡 레이더 기술 뉴스 트래커</h1>
-  <div class="updated">마지막 업데이트: 2026-11-19 11:20 KST (매일 자동 갱신)</div>
+  <div class="updated">마지막 업데이트: 2026-11-19 11:36 KST (매일 자동 갱신)</div>
 </header>
-<h2 class="topic-title">🏛 정부과제 · 입찰 (Gov Projects & Bids)</h2>
-<p class="empty">오늘은 새로운 기사가 없습니다.</p>
-<p class="recent-label">📋 최근 기사</p>
 
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-18</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837429&bidPbancOrd=000" target="_blank" rel="noopener">군집주행 SW분석용 중소형 자율이동체(AMR) 구매</a></h3>
-  <p class="card-summary">수요기관: 조달청 경남지방조달청 · 마감: 2026-12-03 10:00</p><p class="card-ai">🎯 연계 가능성 높음 (8/10) — 자율이동체(AMR) 구매로 레이더 센서 연계 최적</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837429&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
+<div class="summary-bar">
+  <div class="sum"><b>4</b><span>오늘 신규 뉴스</span></div>
+  <a class="sum" href="#sec-gov_bids"><b>7</b><span>공식 공고</span></a>
+  <a class="sum " href="#sec-gov_bids"><b>0</b><span>마감 임박</span></a>
+  <a class="sum hot" href="#sec-gov_bids"><b>4</b><span>연계 높음</span></a>
 </div>
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-17</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836260&bidPbancOrd=000" target="_blank" rel="noopener">로봇 및 파일럿 시스템 1SYS</a></h3>
-  <p class="card-summary">수요기관: 울산과학기술원 · 마감: 2026-11-23 10:00</p><p class="card-ai">🎯 연계 가능성 보통 (5/10) — 로봇 시스템 구축으로 레이더 연계 가능</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836260&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-17</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837437&bidPbancOrd=000" target="_blank" rel="noopener">협동로봇 (2 EA)  및 모바일 베이스 (2 EA) 구매_263172</a></h3>
-  <p class="card-summary">수요기관: 한국과학기술원 · 마감: 2026-11-23 10:00</p><p class="card-ai">🎯 연계 가능성 보통 (7/10) — 협동로봇 및 모바일 베이스 구매로 로봇 센서 연계 가능</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837437&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-16</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01832242&bidPbancOrd=000" target="_blank" rel="noopener">자율주행플랫폼로봇 구매</a></h3>
-  <p class="card-summary">수요기관: 전북대학교 산학협력단 · 마감: 2026-11-23 14:00</p><p class="card-ai">🎯 연계 가능성 보통 (6/10) — 자율주행 로봇 구매로 센서 탑재 연계 가능</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01832242&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-18</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01827573&bidPbancOrd=000" target="_blank" rel="noopener">AX 디바이스 시작품 개발을 위한 이동로봇 플랫폼 및 배터리 구매</a></h3>
-  <p class="card-summary">수요기관: 특수법인 한국전파진흥협회 · 마감: 2026-11-26 10:00</p><p class="card-ai">🎯 연계 가능성 보통 (7/10) — 이동로봇 플랫폼 구매로 레이더 탑재 검토 가능</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01827573&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
-</div>
-<details class="more">
-  <summary>더보기 (5건) ▼</summary>
-  
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-13</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01829923&bidPbancOrd=000" target="_blank" rel="noopener">(26G056-H) 군 의료지원 AI로봇 적용 실증 용역</a></h3>
-  <p class="card-summary">수요기관: 국방부 국군재정관리단 · 마감: 2026-12-04 10:00</p><p class="card-ai">🎯 연계 가능성 보통 (5/10) — 군용 AI로봇 실증으로 로봇 센서 협력 기회 있음</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01829923&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-17</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836170&bidPbancOrd=000" target="_blank" rel="noopener">레이더 모듈 세트 구입</a></h3>
-  <p class="card-summary">수요기관: 가천대학교 산학협력단</p><p class="card-ai">🎯 연계 가능성 높음 (9/10) — 레이더 모듈 구입 공고로 직접적 제품 납품 연계 가능</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836170&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge official">공식 공고</span> 나라장터(공식)&nbsp;·&nbsp;2026-11-16</div>
-  <h3 class="card-title"><a href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01833206&bidPbancOrd=000" target="_blank" rel="noopener">자율주행 기술수준 비교·분석 연구조사 용역</a></h3>
-  <p class="card-summary">수요기관: 한국지능형교통체계협회</p><p class="card-ai">🎯 연계 가능성 보통 (5/10) — 자율주행 기술 연구로 ADAS 연계 가능성 있음</p>
-  <a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01833206&bidPbancOrd=000" target="_blank" rel="noopener">📄 공고 바로가기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge">🏛 과제·입찰</span> 조달경제신문&nbsp;·&nbsp;2026-11-18</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMibkFVX3lxTE5WUG10RWRWZ29Cd3B6RGNDMmhjOEU5c0R0RU0wUjRHd2t3T3dlRGo0c3hUSHROaEQ5TUJ1Rlh5bUM1MTBrV205UGZNUHVsY01qVzlzM0x5TmxXd3E2QzljWm9QX3oxMlFSZGdVNEhB?oc=5" target="_blank" rel="noopener">광주 자율주행 실증도시 30일 차량 첫 투입 …‘27년 레벨4’ 목표, 기술은 달리는데 제도는 걸음마</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMibkFVX3lxTE5WUG10RWRWZ29Cd3B6RGNDMmhjOEU5c0R0RU0wUjRHd2t3T3dlRGo0c3hUSHROaEQ5TUJ1Rlh5bUM1MTBrV205UGZNUHVsY01qVzlzM0x5TmxXd3E2QzljWm9QX3oxMlFSZGdVNEhB?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge">🏛 과제·입찰</span> 경남대학교 대표&nbsp;·&nbsp;2026-11-18</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMib0FVX3lxTE1OYWtISEsyREtkZl9JX1dBYmI4MkRLM1EwRGZYN3psMkJqVnBXSmxRcmtnMVl5NHpUdktvaklabkZOeUNpVFlMSnVMcXVTLTVHSHZyWWZyQ1RrSF9TdjNERWxJMEZVWks4OFZSSkNDUQ?oc=5" target="_blank" rel="noopener">우리 대학, 마산공고 학생 대상 스마트물류·자율주행 실습교육</a></h3>
-  
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMib0FVX3lxTE1OYWtISEsyREtkZl9JX1dBYmI4MkRLM1EwRGZYN3psMkJqVnBXSmxRcmtnMVl5NHpUdktvaklabkZOeUNpVFlMSnVMcXVTLTVHSHZyWWZyQ1RrSF9TdjNERWxJMEZVWks4OFZSSkNDUQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-  <button type="button" class="more-collapse" onclick="var d=this.closest('details');d.open=false;d.scrollIntoView({block:'center'});">접기 ▲</button>
-</details><h2 class="topic-title">이미징 레이더 (자동차 · 산업 · 로봇)</h2>
-<p class="empty">오늘은 새로운 기사가 없습니다.</p>
-<p class="recent-label">📋 최근 기사</p>
+<nav class="tabs"><a href="#sec-robotaxi">로봇택시</a><a href="#sec-autonomous_driving">자율주행</a><a href="#sec-amr_logistics">자율주행 로봇·물류</a><a href="#sec-imaging_radar">이미징 레이더</a><a href="#sec-gov_bids">🏛 정부과제 · 입찰</a></nav>
 
-<div class="card">
-  <div class="card-meta">Fortune Business Insights&nbsp;·&nbsp;2026-10-26</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiekFVX3lxTE8zTjhYSkxWNWZGQU9NZUpGbkVyUHVSMm5FUUx6STM1a0l3SmFGS2JIMVQ1ZDlBRUlOWFBUTm5Rb3YxSUV5S2JGeHJwODlJeHZvZVZOQjdjNEthcDBSWmprNUdaeE5FdzdvcFRMNThIYkxoS2Zxa0Z0X3pn?oc=5" target="_blank" rel="noopener">4D Imaging Radar Market Size, Share | Growth Forecast [2034]</a></h3>
+<details class="sec" id="sec-robotaxi" open>
+  <summary class="topic-title"><span>로봇택시 (Robotaxi)</span><span class="cnt">102건</span></summary>
+  <div class="grid">
+<article class="card">
+  <div class="card-meta"><span class="badge new">NEW</span>Business Insider · 2026-11-19</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMipgFBVV95cUxPU3BVSkNtTXpvSHp4UHpCRFRoZjkzYXpqUEhoMUpldWZwLTNmRFA3amhvRDJqTmE3WlVqeXMtRU1nT2ZYZmNyR0Nidl9YWEJqUDFZSEVFckVISl9HX3RRZFhrZ0EwZXp4TkZsUWJXMEMwS1BBRlVsYXdkQ1g0aVdaNFFLRE9ob3l6akZjVmdGTXY4Nm9XYkNsMUF2OU1nN3Q1TFBMb3hn?oc=5" target="_blank" rel="noopener">Elon Musk says Tesla plans to make an autonomous Model Y with no steering wheel</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiekFVX3lxTE8zTjhYSkxWNWZGQU9NZUpGbkVyUHVSMm5FUUx6STM1a0l3SmFGS2JIMVQ1ZDlBRUlOWFBUTm5Rb3YxSUV5S2JGeHJwODlJeHZvZVZOQjdjNEthcDBSWmprNUdaeE5FdzdvcFRMNThIYkxoS2Zxa0Z0X3pn?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div><h2 class="topic-title">자율주행 (Autonomous Driving)</h2>
-
-<div class="card">
-  <div class="card-meta">뉴시스&nbsp;·&nbsp;2026-11-19</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiYEFVX3lxTE1DWEN3OGRyVnBsaXptQnhUa1lEZFZFcDBHS0xlVnJZTkpEWE1yeGZObjlwaFlvbUt3LUdzV2xQUlF1aVBsUWpUa3NyUXVNYTJLWGxwZEI1NF9EWnQwcUppdtIBeEFVX3lxTE1yWnk0WW9jZy03cG5aR2hPNTk5eENTSmsyMFY4TVNwZHJ4MXZlTVZNOUpVTGdsMDJVeFI3bkUwSXg0ZDB6cVhrWlFkc21lX0UyQldId2JNNkc3d3dFcmViRFVTWXJTVHR4NmE5MlNBYTVlTHM5Tkt0OA?oc=5" target="_blank" rel="noopener">[단독] 현대차·포티투닷, 애플·엔비디아 출신 '자율주행 테크 인재' 공격적 영입</a></h3>
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge new">NEW</span>아시아경제 · 2026-11-19</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZEFVX3lxTE1fcTNiSzhBMzRuMGl2M0FtOTQyYmY5TDR0d3BoRmJ0RXdMYUVnLVlVRUdGYnh2QkFwUFpYdmM4MzhZc3h6a2prSERaU1hNQ2FQOWJzM1pNNnlRU3UwTkV6VjJqOHg?oc=5" target="_blank" rel="noopener">[Why&amp;Next] Supplying Vehicles to Waymo, Investing in Motional... Hyundai Motor&#x27;s &quot;Two-Track&quot; Bet</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiYEFVX3lxTE1DWEN3OGRyVnBsaXptQnhUa1lEZFZFcDBHS0xlVnJZTkpEWE1yeGZObjlwaFlvbUt3LUdzV2xQUlF1aVBsUWpUa3NyUXVNYTJLWGxwZEI1NF9EWnQwcUppdtIBeEFVX3lxTE1yWnk0WW9jZy03cG5aR2hPNTk5eENTSmsyMFY4TVNwZHJ4MXZlTVZNOUpVTGdsMDJVeFI3bkUwSXg0ZDB6cVhrWlFkc21lX0UyQldId2JNNkc3d3dFcmViRFVTWXJTVHR4NmE5MlNBYTVlTHM5Tkt0OA?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div><h2 class="topic-title">자율주행 로봇·물류 (AMR / Logistics)</h2>
-<p class="empty">오늘은 새로운 기사가 없습니다.</p>
-<p class="recent-label">📋 최근 기사</p>
-
-<div class="card">
-  <div class="card-meta">물류신문&nbsp;·&nbsp;2026-11-18</div>
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge new">NEW</span>San Francisco Chronicle · 2026-11-18</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiiwFBVV95cUxQMzdOeXY2MTJxbUo2S01oWlg1R0pqX1g0Zk9wNURmSVpVckRlaXZ5Y2h6a042emJhRUNCaFROcVJGRWpubmZjUFpybDdWNmc2UWVtZHF4VklXVW5FQnlVUVE3dzN2LXNodzlPUkp4UjhRQVQxTkpZVlA2S0tGd1RNYkktUlVPMEZkanhj?oc=5" target="_blank" rel="noopener">Waymo pauses robotaxi service amid San Francisco storms: ‘We were kind of just stuck there’</a></h3>
+  
+</article></div>
+</details>
+<details class="sec" id="sec-autonomous_driving" open>
+  <summary class="topic-title"><span>자율주행 (Autonomous Driving)</span><span class="cnt">183건</span></summary>
+  <div class="grid">
+<article class="card">
+  <div class="card-meta"><span class="badge new">NEW</span>아시아경제 · 2026-11-19</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZEFVX3lxTE1fcTNiSzhBMzRuMGl2M0FtOTQyYmY5TDR0d3BoRmJ0RXdMYUVnLVlVRUdGYnh2QkFwUFpYdmM4MzhZc3h6a2prSERaU1hNQ2FQOWJzM1pNNnlRU3UwTkV6VjJqOHg?oc=5" target="_blank" rel="noopener">[Why&amp;Next] Supplying Vehicles to Waymo, Investing in Motional... Hyundai Motor&#x27;s &quot;Two-Track&quot; Bet</a></h3>
+  
+</article></div>
+</details>
+<details class="sec" id="sec-amr_logistics" open>
+  <summary class="topic-title"><span>자율주행 로봇·물류 (AMR / Logistics)</span><span class="cnt">25건</span></summary>
+  <p class="empty">오늘은 새로운 기사가 없습니다.</p>
+<p class="sub-label">📋 최근 기사</p>
+<div class="grid">
+<article class="card">
+  <div class="card-meta">물류신문 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMia0FVX3lxTE5NUkFJdW0tb3lOd3dXODkzWjFpNXhwcEkxaVpuLWlDWTJZSnoxb2Nza0w3Zmx5OWxGb0JyTVRuYjNTU0JRRTVSOWpMeWVueUZjWmk5SGdrWnN3NktEYmJ5RzBuUU1fc2Y5Xzhr?oc=5" target="_blank" rel="noopener">에이스웍스, 부산항 자율주행 AMR 개발로 24시간 무인 항만 시대 연다</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMia0FVX3lxTE5NUkFJdW0tb3lOd3dXODkzWjFpNXhwcEkxaVpuLWlDWTJZSnoxb2Nza0w3Zmx5OWxGb0JyTVRuYjNTU0JRRTVSOWpMeWVueUZjWmk5SGdrWnN3NktEYmJ5RzBuUU1fc2Y5Xzhr?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta"><span class="badge">🏛 과제·입찰</span> 경남대학교 대표&nbsp;·&nbsp;2026-11-18</div>
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>경남대학교 대표 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMib0FVX3lxTE1OYWtISEsyREtkZl9JX1dBYmI4MkRLM1EwRGZYN3psMkJqVnBXSmxRcmtnMVl5NHpUdktvaklabkZOeUNpVFlMSnVMcXVTLTVHSHZyWWZyQ1RrSF9TdjNERWxJMEZVWks4OFZSSkNDUQ?oc=5" target="_blank" rel="noopener">우리 대학, 마산공고 학생 대상 스마트물류·자율주행 실습교육</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMib0FVX3lxTE1OYWtISEsyREtkZl9JX1dBYmI4MkRLM1EwRGZYN3psMkJqVnBXSmxRcmtnMVl5NHpUdktvaklabkZOeUNpVFlMSnVMcXVTLTVHSHZyWWZyQ1RrSF9TdjNERWxJMEZVWks4OFZSSkNDUQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">전라매일&nbsp;·&nbsp;2026-11-18</div>
+</article>
+<article class="card">
+  <div class="card-meta">전라매일 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiUkFVX3lxTE5TRWZfcEE2aU4yRWRGT2Nfa3QyS3BRbzJfR0luQklmUHAyZG5ieVd4UEd6b3dYcEJBRk56eHFVbjJsUk9rWm9CX3NsZTFGWW1IWEE?oc=5" target="_blank" rel="noopener">전북도, 동부권 산악지역 자율주행 도입 추진</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiUkFVX3lxTE5TRWZfcEE2aU4yRWRGT2Nfa3QyS3BRbzJfR0luQklmUHAyZG5ieVd4UEd6b3dYcEJBRk56eHFVbjJsUk9rWm9CX3NsZTFGWW1IWEE?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">전북도민일보&nbsp;·&nbsp;2026-11-18</div>
+</article>
+<article class="card">
+  <div class="card-meta">전북도민일보 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiakFVX3lxTE9vU2NvWE5SNXpjWTFPcnU1OG0xUEJzMzJVbi1HMWh3YWhGVnJxaHYtaE1xWUg2MTNQSGsxbDFkdVROejN0REdSOWQxM09FTFMyOGNXOWR3b1A4ejd1eWFFTXg1LTBXVWlNWXc?oc=5" target="_blank" rel="noopener">전북특별자치도, 동부권 산악지역 자율주행 교통서비스 도입 제도 기반 마련나서</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiakFVX3lxTE9vU2NvWE5SNXpjWTFPcnU1OG0xUEJzMzJVbi1HMWh3YWhGVnJxaHYtaE1xWUg2MTNQSGsxbDFkdVROejN0REdSOWQxM09FTFMyOGNXOWR3b1A4ejd1eWFFTXg1LTBXVWlNWXc?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">투데이안&nbsp;·&nbsp;2026-11-18</div>
+</article>
+<article class="card">
+  <div class="card-meta">투데이안 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE5nZzJsajRtVUJvUVB0anpfVFR1OXZDQXpRQXNpVWF6Qzk3TWtWX3dTaHRFRkJFOGx2UktOY0w5WGROMEtlNlhXeTQ0ZVpYZjBRSDFQWjVWaDNrbElqbm5UYnZWNlYxdjhs?oc=5" target="_blank" rel="noopener">전북자치도, 동부권 산악지역 자율주행 교통서비스 도입 추진</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiaEFVX3lxTE5nZzJsajRtVUJvUVB0anpfVFR1OXZDQXpRQXNpVWF6Qzk3TWtWX3dTaHRFRkJFOGx2UktOY0w5WGROMEtlNlhXeTQ0ZVpYZjBRSDFQWjVWaDNrbElqbm5UYnZWNlYxdjhs?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
+</article></div>
 <details class="more">
   <summary>더보기 (5건) ▼</summary>
-  
-<div class="card">
-  <div class="card-meta">전북엔비전&nbsp;·&nbsp;2026-11-18</div>
+  <div class="grid">
+<article class="card">
+  <div class="card-meta">전북엔비전 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZkFVX3lxTE83WTdKMks3ODF5Zkw1VU41OU04U050ZXctN2RfS3Bmemk1b0R3NXlTc1pzcmlaVVo0RVV1MkhVdU9xSWNHQkU3TXlrZlZTTFJiVEZQZU9aU0tYVlJOZVVreTJNZTU4Zw?oc=5" target="_blank" rel="noopener">전북도, 동부권 산악지역 자율주행 교통서비스 도입 위한 특례 해법 모색</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiZkFVX3lxTE83WTdKMks3ODF5Zkw1VU41OU04U050ZXctN2RfS3Bmemk1b0R3NXlTc1pzcmlaVVo0RVV1MkhVdU9xSWNHQkU3TXlrZlZTTFJiVEZQZU9aU0tYVlJOZVVreTJNZTU4Zw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">아이뉴스24&nbsp;·&nbsp;2026-11-18</div>
+</article>
+<article class="card">
+  <div class="card-meta">아이뉴스24 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiS0FVX3lxTE0xeGFLXzVRYmtuNnB6UVJGcnFXN1VmZUtMRkJQSVg5enZxdkxoaEtjcXhkMEoyY1luWjQzLW5VZUZ0RjJudGdDR0I1UQ?oc=5" target="_blank" rel="noopener">전북도, 동부권 자율주행 교통서비스 도입 특례 해법 찾는다</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiS0FVX3lxTE0xeGFLXzVRYmtuNnB6UVJGcnFXN1VmZUtMRkJQSVg5enZxdkxoaEtjcXhkMEoyY1luWjQzLW5VZUZ0RjJudGdDR0I1UQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">경남대학교 대표&nbsp;·&nbsp;2026-11-18</div>
+</article>
+<article class="card">
+  <div class="card-meta">경남대학교 대표 · 2026-11-18</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZEFVX3lxTE1yUldXRVZ2MW9CakNFTW43WG9aR2E5NHp2dHpwbDRYY25sMXlvZXVkeFl3UzJ6eFpzSUhIcUJXT0VzamhwaDZ5ZEUxTGxnZnEtSGVqQmw3dlZ4ZXFGRGo3UWpiOXU?oc=5" target="_blank" rel="noopener">월영소식</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiZEFVX3lxTE1yUldXRVZ2MW9CakNFTW43WG9aR2E5NHp2dHpwbDRYY25sMXlvZXVkeFl3UzJ6eFpzSUhIcUJXT0VzamhwaDZ5ZEUxTGxnZnEtSGVqQmw3dlZ4ZXFGRGo3UWpiOXU?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">FA저널&nbsp;·&nbsp;2026-11-17</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMia0FVX3lxTE1CYjB0WlFSR2J4X3RYb0dwNEp3R3lFRFJuRTBLMjI4VG0xZDg0ZlJjVzRaS2Nad0pJdHFuREp6ekExWEJkcE1URkpnZ1dEbV8zYnVOeVh1aHRBTFd2MU52bFE0blRjUERBd2ZZ?oc=5" target="_blank" rel="noopener">트위니, 자율주행 피킹 솔루션 '나르고 오더피킹' 차세대 세계일류상품 선정</a></h3>
+</article>
+<article class="card">
+  <div class="card-meta">FA저널 · 2026-11-17</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMia0FVX3lxTE1CYjB0WlFSR2J4X3RYb0dwNEp3R3lFRFJuRTBLMjI4VG0xZDg0ZlJjVzRaS2Nad0pJdHFuREp6ekExWEJkcE1URkpnZ1dEbV8zYnVOeVh1aHRBTFd2MU52bFE0blRjUERBd2ZZ?oc=5" target="_blank" rel="noopener">트위니, 자율주행 피킹 솔루션 &#x27;나르고 오더피킹&#x27; 차세대 세계일류상품 선정</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMia0FVX3lxTE1CYjB0WlFSR2J4X3RYb0dwNEp3R3lFRFJuRTBLMjI4VG0xZDg0ZlJjVzRaS2Nad0pJdHFuREp6ekExWEJkcE1URkpnZ1dEbV8zYnVOeVh1aHRBTFd2MU52bFE0blRjUERBd2ZZ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
-<div class="card">
-  <div class="card-meta">카매거진 CAR MAGAZINE&nbsp;·&nbsp;2026-11-17</div>
+</article>
+<article class="card">
+  <div class="card-meta">카매거진 CAR MAGAZINE · 2026-11-17</div>
   <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiZkFVX3lxTE4zem44Q0tYcEplY2oyTktWWHFkeFJ0Mlpxb3l1NnVxa0JrVEpvUzFqczBVZS00ZzJ0UFh6RXpjLVZianVjV0hIN05Zc0c1MlEtVkY0Z1RvZkhWaFI4a1RYVUtvblJkZw?oc=5" target="_blank" rel="noopener">만트럭, 獨 뮌헨서 자율주행 전기버스 실증 확대... 승객 태우고 도심 운행 나선다</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMiZkFVX3lxTE4zem44Q0tYcEplY2oyTktWWHFkeFJ0Mlpxb3l1NnVxa0JrVEpvUzFqczBVZS00ZzJ0UFh6RXpjLVZianVjV0hIN05Zc0c1MlEtVkY0Z1RvZkhWaFI4a1RYVUtvblJkZw?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
+</article></div>
   <button type="button" class="more-collapse" onclick="var d=this.closest('details');d.open=false;d.scrollIntoView({block:'center'});">접기 ▲</button>
-</details><h2 class="topic-title">로봇택시 (Robotaxi)</h2>
-
-<div class="card">
-  <div class="card-meta">Rus Tourism News&nbsp;·&nbsp;2026-11-18</div>
-  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMivwFBVV95cUxQbDZDcS0xdWhpZHd2MGN5bkJwRVQwWUdqTGp2TkxPRy15djUzSVNTUW04cHFCSWNPc3ByUzBsS3dfaEFkcHVoQ19hNVNucVhlTkZfOFBwZWFYUUo4WFNYQmVyVUpRSWFndVc2ZHBVYV9pVEZ5VnlVTHlmQWp5WUVkTHFGcnNVcFVqZnpsTkJWSl9KLW81a2JvSUkwWGkyZmFZU1hEODJaNGZxcGt1UnJ6Z3RDM1JEeTBpcS1SdmgxQQ?oc=5" target="_blank" rel="noopener">Waymo Suspends Robotaxi Freeway Rides Across the US After California Safety Ban</a></h3>
+</details>
+</details>
+<details class="sec" id="sec-imaging_radar" open>
+  <summary class="topic-title"><span>이미징 레이더 (자동차 · 산업 · 로봇)</span><span class="cnt">1건</span></summary>
+  <p class="empty">오늘은 새로운 기사가 없습니다.</p>
+<p class="sub-label">📋 최근 기사</p>
+<div class="grid">
+<article class="card">
+  <div class="card-meta">Fortune Business Insights · 2026-10-26</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiekFVX3lxTE8zTjhYSkxWNWZGQU9NZUpGbkVyUHVSMm5FUUx6STM1a0l3SmFGS2JIMVQ1ZDlBRUlOWFBUTm5Rb3YxSUV5S2JGeHJwODlJeHZvZVZOQjdjNEthcDBSWmprNUdaeE5FdzdvcFRMNThIYkxoS2Zxa0Z0X3pn?oc=5" target="_blank" rel="noopener">4D Imaging Radar Market Size, Share | Growth Forecast [2034]</a></h3>
   
-  <a class="card-link" href="https://news.google.com/rss/articles/CBMivwFBVV95cUxQbDZDcS0xdWhpZHd2MGN5bkJwRVQwWUdqTGp2TkxPRy15djUzSVNTUW04cHFCSWNPc3ByUzBsS3dfaEFkcHVoQ19hNVNucVhlTkZfOFBwZWFYUUo4WFNYQmVyVUpRSWFndVc2ZHBVYV9pVEZ5VnlVTHlmQWp5WUVkTHFGcnNVcFVqZnpsTkJWSl9KLW81a2JvSUkwWGkyZmFZU1hEODJaNGZxcGt1UnJ6Z3RDM1JEeTBpcS1SdmgxQQ?oc=5" target="_blank" rel="noopener">원문 보기 →</a>
-</div>
+</article></div>
+</details>
+<details class="sec" id="sec-gov_bids">
+  <summary class="topic-title"><span>🏛 정부과제 · 입찰 (Gov Projects &amp; Bids)</span><span class="cnt">15건</span></summary>
+  <p class="sub-label">📄 나라장터 공식 공고 <small>(연계도 높은 순 · 마감 임박 순)</small></p>
+<ul class="bids">
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837437&amp;bidPbancOrd=000" target="_blank" rel="noopener">협동로봇 (2 EA)  및 모바일 베이스 (2 EA) 구매_263172</a>
+    <div class="bid-meta">한국과학기술원 · 마감 2026-11-23 10:00</div>
+    <div class="bid-ai high">🎯 8/10 · 협동로봇 및 모바일 베이스(AMR)로 센서 탑재 연계 가능</div>
+  </div>
+  <div class="bid-side"><span class="dd">D-4</span><a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837437&amp;bidPbancOrd=000" target="_blank" rel="noopener">공고 ↗</a></div>
+</li>
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01827573&amp;bidPbancOrd=000" target="_blank" rel="noopener">AX 디바이스 시작품 개발을 위한 이동로봇 플랫폼 및 배터리 구매</a>
+    <div class="bid-meta">특수법인 한국전파진흥협회 · 마감 2026-11-26 10:00</div>
+    <div class="bid-ai high">🎯 8/10 · 이동로봇 플랫폼 및 디바이스 개발로 센서 탑재 검토 가능</div>
+  </div>
+  <div class="bid-side"><span class="dd">D-7</span><a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01827573&amp;bidPbancOrd=000" target="_blank" rel="noopener">공고 ↗</a></div>
+</li>
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837429&amp;bidPbancOrd=000" target="_blank" rel="noopener">군집주행 SW분석용 중소형 자율이동체(AMR) 구매</a>
+    <div class="bid-meta">조달청 경남지방조달청 · 마감 2026-12-03 10:00</div>
+    <div class="bid-ai high">🎯 9/10 · 군집주행 AMR 구매로 자율이동체 센서 연계성 높음</div>
+  </div>
+  <div class="bid-side"><span class="dd">D-14</span><a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01837429&amp;bidPbancOrd=000" target="_blank" rel="noopener">공고 ↗</a></div>
+</li>
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836260&amp;bidPbancOrd=000" target="_blank" rel="noopener">로봇 및 파일럿 시스템 1SYS</a>
+    <div class="bid-meta">울산과학기술원 · 마감 2026-11-23 10:00</div>
+    <div class="bid-ai mid">🎯 5/10 · 로봇 시스템 구축으로 센서 연계 가능성 있음</div>
+  </div>
+  <div class="bid-side"><span class="dd">D-4</span><a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836260&amp;bidPbancOrd=000" target="_blank" rel="noopener">공고 ↗</a></div>
+</li>
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01832242&amp;bidPbancOrd=000" target="_blank" rel="noopener">자율주행플랫폼로봇 구매</a>
+    <div class="bid-meta">전북대학교 산학협력단 · 마감 2026-11-23 14:00</div>
+    <div class="bid-ai mid">🎯 5/10 · 자율주행 로봇 구매로 센서 탑재 연계 가능</div>
+  </div>
+  <div class="bid-side"><span class="dd">D-4</span><a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01832242&amp;bidPbancOrd=000" target="_blank" rel="noopener">공고 ↗</a></div>
+</li>
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01829923&amp;bidPbancOrd=000" target="_blank" rel="noopener">(26G056-H) 군 의료지원 AI로봇 적용 실증 용역</a>
+    <div class="bid-meta">국방부 국군재정관리단 · 마감 2026-12-04 10:00</div>
+    <div class="bid-ai mid">🎯 6/10 · 군 AI로봇 실증으로 로봇용 레이더 연계 가능성 있음</div>
+  </div>
+  <div class="bid-side"><span class="dd">D-15</span><a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01829923&amp;bidPbancOrd=000" target="_blank" rel="noopener">공고 ↗</a></div>
+</li>
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836170&amp;bidPbancOrd=000" target="_blank" rel="noopener">레이더 모듈 세트 구입</a>
+    <div class="bid-meta">가천대학교 산학협력단</div>
+    <div class="bid-ai high">🎯 9/10 · 레이더 모듈 세트 구입으로 제품 납품 기회 큼</div>
+  </div>
+  <div class="bid-side"><span class="dd none">마감 미표기</span><a class="bid-btn" href="https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=R26BK01836170&amp;bidPbancOrd=000" target="_blank" rel="noopener">공고 ↗</a></div>
+</li></ul><p class="sub-label">📰 관련 뉴스</p>
+<div class="grid">
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>조달경제신문 · 2026-11-18</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMibkFVX3lxTE5WUG10RWRWZ29Cd3B6RGNDMmhjOEU5c0R0RU0wUjRHd2t3T3dlRGo0c3hUSHROaEQ5TUJ1Rlh5bUM1MTBrV205UGZNUHVsY01qVzlzM0x5TmxXd3E2QzljWm9QX3oxMlFSZGdVNEhB?oc=5" target="_blank" rel="noopener">광주 자율주행 실증도시 30일 차량 첫 투입 …‘27년 레벨4’ 목표, 기술은 달리는데 제도는 걸음마</a></h3>
+  
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>경남대학교 대표 · 2026-11-18</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMib0FVX3lxTE1OYWtISEsyREtkZl9JX1dBYmI4MkRLM1EwRGZYN3psMkJqVnBXSmxRcmtnMVl5NHpUdktvaklabkZOeUNpVFlMSnVMcXVTLTVHSHZyWWZyQ1RrSF9TdjNERWxJMEZVWks4OFZSSkNDUQ?oc=5" target="_blank" rel="noopener">우리 대학, 마산공고 학생 대상 스마트물류·자율주행 실습교육</a></h3>
+  
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>파이낸셜뉴스 · 2026-11-12</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiWkFVX3lxTFBMZnE1dTJnUUMxaFFrc1pRRXo4Y0F0RGtQVWpRbjM1UE5YNmN6YnNGMU5HRk1PS253VFlUWV9mNWtRTURQQ1ZhNnZaWWxTdm1DbC1jcDg5MkF0QQ?oc=5" target="_blank" rel="noopener">제주 자율주행, 운전자 없는 &#x27;레벨4&#x27; 도전… 국가 실증사업 유치 추진</a></h3>
+  
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>제주팟닷컴 · 2026-11-11</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiYEFVX3lxTE1TTzlyV0lTeGtXREk4T0FSeS1rbzktZHN6YVgxMVhEb25DVlFxcG9LSGwxTERBTHBaeDExYWx4RXpLb1pqNjJMSXdqSVJyRFowVU85RXZtYjZfenVnWGthTA?oc=5" target="_blank" rel="noopener">제주, 레벨4 자율주행 상용화 추진…국가 공모사업 유치 총력</a></h3>
+  
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>fundsforNGOs - Grants and Resources for Sustainability · 2026-11-03</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMivwFBVV95cUxQRGd4QW5NdmJISUNadUxNc043bkh6bTZhazFna1hYVVhwbndTbHhrT1RPanJIZkVwUVVZM2ZYZzlXUm9WNU9weGN1b2c2bHhoSXhzZEpVU3NmYVNubUE5aFZXclFiUTEzdU0zWWo1Sy1IYURuSkVPZFpfSXAxVkFCWE14VTJUaHJVZW40UmNIM2hIRjRIY0NiaXE0UjlBYkhBbzdNTUlrcW9oOWRJZmoyVE9ZcklKQjY1UlNZSGVLVdIBxAFBVV95cUxPY2JfaXhmd0RLdmN6Qnl0WDJZRnd5X3JISHl0NG44RDdkQnpLZ0ppMGZVOXk5c2RsSnYxZUtWei1NN1ZoZmZmd0Zmcmtrd3JBLVJOUklKaXlycVVWZDZCU2V2dGJ2b2laazBybVdvNE1MZVN4TTJMbXpfYVpUQkd2ZGFJc3R3bzdkbDVFendBVkhFZ21LVVVFQUljd0hIYTN5YUpubjJSc0F6aGNud1NreGtMc0RpN3VmbXFMdnEwajhjSDY3?oc=5" target="_blank" rel="noopener">Standards and Benchmarks for Dexterous Robotics Funding Programme (UK)</a></h3>
+  
+</article></div>
+<details class="more">
+  <summary>더보기 (3건) ▼</summary>
+  <div class="grid">
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>더스탁(The Stock) · 2026-11-02</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMiakFVX3lxTE9kLWU5QmFJSkJ1OE5KRUY2N0hONjJ6TUUwTUFmY0Rzd0k3OUUxNmJCN0NzTnlJWVJRMXhxNkVSLTliR08tci1NZlNXV21GdlBSM1NRSWx0cmgzejctRjc1U0xXd3Jicm0xQWc?oc=5" target="_blank" rel="noopener">센서뷰, 92억 원 규모 6G MIMO 국책과제 주관…美 퍼듀대·UCSD와 공동연구</a></h3>
+  
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>조달경제신문 · 2026-10-27</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMibkFVX3lxTFAyRXpzbFVNQVdMT1JaZDJlbFpPel9lQVVTd3BYUDFRU0JqUDJtSzdXQ19XajlmLTRBelQyUlF1UXROcGZVUmIxTHRnRXdsVXg0OHBsOGl1SFgwVkpxMXNiWmtWTl83YUtHQmtJZ3Vn?oc=5" target="_blank" rel="noopener">[심층 분석] 본지 자율주행 연재가 짚은 15개 과제…정부 규제합리화 방안이 온전히 답한 것은 2개</a></h3>
+  
+</article>
+<article class="card">
+  <div class="card-meta"><span class="badge">🏛 과제·입찰</span>인천광역시 · 2026-10-25</div>
+  <h3 class="card-title"><a href="https://news.google.com/rss/articles/CBMijwFBVV95cUxONUtJRS1BMEk2Zy1HREZoRmRkVm5qRFM5UUNqRTBUMXJaWEhCOTdtS2ZiYU5iQWtvT3p2MG1RT1l0OFdIV3FZa04tNmdPam1FU2o3T1lnOGMyTHFuWjktNm9FUG1tMWxtM1RpYUJLMElEdUVkMFZ4bmlsWGFhUkZMRUNXTDh0TXpicFJrQnFSTQ?oc=5" target="_blank" rel="noopener">「인천 물류로봇 실증 특화거점 견학프로그램」참여자 모집공고</a></h3>
+  
+</article></div>
+  <button type="button" class="more-collapse" onclick="var d=this.closest('details');d.open=false;d.scrollIntoView({block:'center'});">접기 ▲</button>
+</details>
+</details>
+<script>
+(function () {
+  function openFor(h) {
+    if (!h) return;
+    try { var el = document.querySelector(h); if (el && el.tagName === 'DETAILS') el.open = true; } catch (e) {}
+  }
+  document.querySelectorAll('nav.tabs a, a.sum').forEach(function (a) {
+    a.addEventListener('click', function () { openFor(a.getAttribute('href')); });
+  });
+  window.addEventListener('hashchange', function () { openFor(location.hash); });
+  openFor(location.hash);
+})();
+</script>
 </body>
 </html>
