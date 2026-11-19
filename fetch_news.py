@@ -91,6 +91,23 @@ GOV_EXTRA_QUERIES = [
 ]
 
 
+# '해당 공고 확인' 버튼이 검색할 R&D·조달 공고 사이트 (NTIS, 부처·전문기관, 나라장터, 기업마당 등)
+GOV_SEARCH_SITES = [
+    "ntis.go.kr", "keit.re.kr", "iitp.kr", "kaia.re.kr", "kimst.re.kr", "kiat.or.kr",
+    "smtech.go.kr", "motir.go.kr", "molit.go.kr", "mof.go.kr", "msit.go.kr", "g2b.go.kr", "bizinfo.go.kr",
+]
+
+
+def find_notice_urls(art):
+    """과제 기사에서 '지난 공고'를 찾는 구글 검색 링크 2개 (공고 사이트 한정 / 전체 웹)"""
+    q = (art.get("ai_query") or "").strip()
+    if not q:
+        q = re.sub(r"\s+", " ", re.sub(r"[\"'“”‘’\[\]「」『』…·,]", " ", art.get("title", ""))).strip()[:60] + " 공고"
+    sites = " OR ".join(f"site:{d}" for d in GOV_SEARCH_SITES)
+    base = "https://www.google.com/search?q="
+    return (base + urllib.parse.quote(f"{q} ({sites})"), base + urllib.parse.quote(q))
+
+
 def gnews(query, lang="en", country="US"):
     q = urllib.parse.quote(query)
     ceid = f"{country}:{lang}"
@@ -362,7 +379,8 @@ def ai_score_bids(bids, profile, kind="bid"):
             "아래 제품·사업과 연계(파트너·경쟁사 동향, 후속 과제 단서 포함)될 가능성을 0~10점으로 평가한다. "
             "과제·사업과 무관한 일반 기사, 교육·행사·홍보성 기사는 0~3점. "
             "type은 '공모중', '선정·참여', '정책·계획', '기타' 중 하나. "
-            "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"type\":\"유형\",\"reason\":\"20자 내외 한국어 이유\"}]} 만 출력한다.\n"
+            "query는 해당 과제·사업의 원래 공고를 검색할 한국어 검색어(회사명·언론 표현 제외, 과제/사업의 핵심어 2~4개 + '공고'). "
+            "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"type\":\"유형\",\"reason\":\"20자 내외 한국어 이유\",\"query\":\"검색어\"}]} 만 출력한다.\n"
             f"제품·사업: {desc}\n관심 키워드: {interests}"
         )
     else:
@@ -409,6 +427,7 @@ def ai_score_bids(bids, profile, kind="bid"):
                     b["ai_reason"] = str(r.get("reason", ""))[:60]
                     if kind == "news":
                         b["ai_type"] = str(r.get("type", ""))[:10]
+                        b["ai_query"] = str(r.get("query", ""))[:80]
                     ok += 1
                 done = True
                 break
@@ -592,6 +611,10 @@ def card_html(art, is_new=False):
         lvl = "high" if art["ai_score"] >= 8 else "mid"
         summary_html += (f'<div class="bid-ai {lvl}">🎯 {esc(art.get("ai_type", ""))} · '
                          f'{art["ai_score"]}/10 · {esc(art.get("ai_reason", ""))}</div>')
+    if art.get("gov") and not art.get("official"):
+        u_sites, u_web = find_notice_urls(art)
+        summary_html += (f'<div class="find-row"><a class="find-btn" href="{esc(u_sites)}" target="_blank" rel="noopener">🔎 해당 공고 확인</a>'
+                         f'<a class="find-alt" href="{esc(u_web)}" target="_blank" rel="noopener">웹 전체 검색</a></div>')
     return f"""
 <article class="card">
   <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{new_badge}{title}</a></h3>
@@ -830,6 +853,13 @@ def build_html(new_results, all_results, generated_at):
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }}
 
+  .find-row {{ display:flex; align-items:center; gap:10px; margin-top:8px; }}
+  .find-btn {{
+    font-size: 12px; font-weight: 700; color: var(--blue); text-decoration: none;
+    border: 1px solid #d8cfb8; background: #fbf7ea; border-radius: 8px; padding: 4px 10px;
+  }}
+  .find-btn:hover {{ background: #f3ecd6; }}
+  .find-alt {{ font-size: 12px; color: var(--muted); text-decoration: underline; }}
   .badge {{
     display:inline-block; font-size:11px; font-weight:600; background:#f5e7c0; color:#7a4b12;
     border-radius:6px; padding:0 6px; margin-right:4px;
