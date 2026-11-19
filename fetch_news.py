@@ -41,6 +41,8 @@ GOV_PATTERN = re.compile(
     r"정부\s?과제|국책\s?과제|국가\s?과제|연구개발\s?과제|R&D\s?과제|과제\s?(?:공고|공모|선정)|"
     r"공모|입찰|발주|공고|사업자\s?선정|수행기관|주관기관|실증\s?사업|시범\s?사업|지원\s?사업|"
     r"나라장터|조달청|NTIS|IITP|KIAT|"
+    r"기술\s?개발\s?(?:과제|사업)|(?<![A-Za-z])R&D|연구\s?개발|과제\s?(?:참여|수행|착수|공고)|"
+    r"컨소시엄|참여\s?기업|사업\s?참여|테스트베드|"
     r"\b(?:grant|grants|funding|tender|RFP|RFQ|solicitation|BAA|Horizon Europe|call for proposals)\b",
     re.IGNORECASE,
 )
@@ -75,6 +77,18 @@ AI_MIN_SCORE = 5      # 0~10점 중 이 점수 이상만 표시
 AI_CHUNK     = 20     # 한 번에 판정할 공고 수
 AI_TIMEOUT   = 90     # 한 번 호출 최대 대기(초)
 G2B_DAYS = 6   # 참고문서 v1.3: 조회기간 최대 7일 → 여유 있게 6일 전 0시 ~ 현재
+
+
+# 과제·사업 소식을 찾는 뉴스 검색어 (data/interest_profile.txt 의 [과제검색어] 에 줄을 추가하면 함께 사용됨)
+GOV_EXTRA_QUERIES = [
+    "스마트항만 자율주행 기술개발 과제",
+    "자율주행 기술개발 과제 선정 컨소시엄",
+    "산업통상부 자율주행 R&D 과제 공고",
+    "레이더 센서 기술개발 과제 선정",
+    "자율주행 로봇 R&D 과제 참여",
+    "국토교통부 자율주행 실증 사업 참여기업 모집",
+    "해양수산부 스마트항만 R&D 과제",
+]
 
 
 def gnews(query, lang="en", country="US"):
@@ -287,7 +301,7 @@ def fetch_rss(url):
 
 def load_profile():
     """data/interest_profile.txt 읽기. [섹션명] 아래에 한 줄씩 적고, # 로 시작하는 줄은 주석."""
-    sections = {"제품설명": [], "검색키워드": [], "제외키워드": []}
+    sections = {"제품설명": [], "검색키워드": [], "제외키워드": [], "과제검색어": []}
     if PROFILE_FILE.exists():
         cur = None
         for line in PROFILE_FILE.read_text(encoding="utf-8").splitlines():
@@ -330,22 +344,35 @@ def list_gemini_models(key):
     return [c[2] for c in cands]
 
 
-def ai_score_bids(bids, profile):
+def ai_score_bids(bids, profile, kind="bid"):
     """공고 제목·기관을 AI가 읽고 연계도(0~10)와 이유를 붙임. 한 건이라도 성공하면 True.
     모델이 단종(404)·과부하(503/429)·지연(timeout)이면 다른 flash 계열 모델로 자동 전환."""
     key = os.environ.get(AI_KEY_ENV, "").strip()
-    if not key or not bids:
-        print(f"  [AI판정] {AI_KEY_ENV} 없음 또는 대상 없음 → 키워드 방식 사용")
+    if not bids:
+        return False
+    if not key:
+        print(f"  [AI판정] {AI_KEY_ENV} 없음 → 키워드 방식 사용")
         return False
     desc = " ".join(profile["제품설명"]) or DEFAULT_PRODUCT_DESC
     interests = ", ".join(profile["검색키워드"] or G2B_KEYWORDS)
-    system = (
-        "너는 레이더 센서 회사의 사업개발 담당을 돕는 공공조달·정부과제 공고 선별기다. "
-        "공고 제목과 기관을 보고, 아래 제품·관심사와 사업화·납품·연구협력으로 연계될 가능성을 0~10점으로 평가한다. "
-        "경비·청소·시설관리 같은 일반 용역, 제품과 무관한 구매는 0~2점. "
-        "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"reason\":\"20자 내외 한국어 이유\"}]} 만 출력한다.\n"
-        f"제품·사업: {desc}\n관심 키워드: {interests}"
-    )
+    if kind == "news":
+        system = (
+            "너는 레이더 센서 회사의 사업개발 담당을 돕는 뉴스 선별기다. "
+            "각 항목은 뉴스 제목(org는 언론사)이다. 정부 R&D 과제·실증사업·지원사업의 공모·선정·참여·착수 소식이면서 "
+            "아래 제품·사업과 연계(파트너·경쟁사 동향, 후속 과제 단서 포함)될 가능성을 0~10점으로 평가한다. "
+            "과제·사업과 무관한 일반 기사, 교육·행사·홍보성 기사는 0~3점. "
+            "type은 '공모중', '선정·참여', '정책·계획', '기타' 중 하나. "
+            "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"type\":\"유형\",\"reason\":\"20자 내외 한국어 이유\"}]} 만 출력한다.\n"
+            f"제품·사업: {desc}\n관심 키워드: {interests}"
+        )
+    else:
+        system = (
+            "너는 레이더 센서 회사의 사업개발 담당을 돕는 공공조달·정부과제 공고 선별기다. "
+            "공고 제목과 기관을 보고, 아래 제품·관심사와 사업화·납품·연구협력으로 연계될 가능성을 0~10점으로 평가한다. "
+            "경비·청소·시설관리 같은 일반 용역, 제품과 무관한 구매는 0~2점. "
+            "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"reason\":\"20자 내외 한국어 이유\"}]} 만 출력한다.\n"
+            f"제품·사업: {desc}\n관심 키워드: {interests}"
+        )
     model = AI_MODEL
     fallbacks = None            # 처음 문제가 생겼을 때 한 번만 목록 조회
     failed = set()
@@ -353,7 +380,7 @@ def ai_score_bids(bids, profile):
     ok = 0
     for i in range(0, len(bids), AI_CHUNK):
         chunk = bids[i:i + AI_CHUNK]
-        items = [{"id": n, "title": b["title"], "org": b.get("org", "")} for n, b in enumerate(chunk)]
+        items = [{"id": n, "title": b["title"], "org": b.get("org") or b.get("source", "")} for n, b in enumerate(chunk)]
         done = False
         for attempt in range(5):
             cfg = {"temperature": 0, "responseMimeType": "application/json"}
@@ -380,6 +407,8 @@ def ai_score_bids(bids, profile):
                     b = chunk[int(r["id"])]
                     b["ai_score"] = max(0, min(10, int(r["score"])))
                     b["ai_reason"] = str(r.get("reason", ""))[:60]
+                    if kind == "news":
+                        b["ai_type"] = str(r.get("type", ""))[:10]
                     ok += 1
                 done = True
                 break
@@ -559,6 +588,10 @@ def card_html(art, is_new=False):
     gov_badge = '<span class="badge">🏛 과제·입찰</span>' if art.get("gov") else ""
     meta = " · ".join(filter(None, [source, pub]))
     summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
+    if art.get("ai_type") is not None and art.get("ai_score") is not None:
+        lvl = "high" if art["ai_score"] >= 8 else "mid"
+        summary_html += (f'<div class="bid-ai {lvl}">🎯 {esc(art.get("ai_type", ""))} · '
+                         f'{art["ai_score"]}/10 · {esc(art.get("ai_reason", ""))}</div>')
     return f"""
 <article class="card">
   <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{new_badge}{title}</a></h3>
@@ -881,6 +914,13 @@ def main():
     new_results = {}
     all_results = {}
 
+    extra_q = GOV_EXTRA_QUERIES + [q for q in load_profile()["과제검색어"] if q not in GOV_EXTRA_QUERIES]
+    gov_feeds = TOPICS[GOV_KEY]["feeds"]
+    for q in extra_q:
+        f = gnews(q, lang="ko", country="KR")
+        if f not in gov_feeds:
+            gov_feeds.append(f)
+
     for topic_key, info in TOPICS.items():
         print(f"\n=== {info['label']} ===")
         new_arts    = []
@@ -966,6 +1006,16 @@ def main():
         if uid not in seen:
             new_seen[uid] = today
             gov_new.append(a)
+    # 과제 관련 뉴스도 제목을 AI가 읽고 연계도·유형(공모중/선정·참여/…)을 붙여 관련 없는 기사는 제외
+    news_items = [a for a in gov_all if not a.get("official")]
+    if news_items and ai_score_bids(news_items, prof, kind="news"):
+        drop = {a["url"] for a in news_items
+                if a.get("ai_score") is not None and a["ai_score"] < AI_MIN_SCORE}
+        for a in news_items:
+            if a["url"] in drop:
+                print(f"    [과제뉴스 제외] {a['title'][:40]} ({a['ai_score']}점, {a.get('ai_reason','')})")
+        gov_all = [a for a in gov_all if a["url"] not in drop]
+        gov_new = [a for a in gov_new if a["url"] not in drop]
     now_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
     gov_all = [a for a in gov_all if not is_expired(a, now_str)]   # 마감 지난 공고 제외
     gov_new = [a for a in gov_new if not is_expired(a, now_str)]
