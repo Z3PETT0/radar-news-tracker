@@ -54,6 +54,11 @@ G2B_OPERATIONS = [
     "getBidPblancListInfoServcPPSSrch02",   # 나라장터검색조건에 의한 입찰공고 용역조회
     "getBidPblancListInfoThngPPSSrch02",    # 나라장터검색조건에 의한 입찰공고 물품조회
 ]
+# 공식 공고에서 제목에 이 단어가 있으면 제외 (사업과 무관한 일반 용역)
+G2B_EXCLUDE = [
+    "경비", "청소", "시설관리", "급식", "식자재", "폐기물", "방역", "소독", "세탁",
+    "조경", "도색", "누수", "보안관제", "청사", "관리용역", "인력파견", "차량임차",
+]
 G2B_DAYS = 6   # 참고문서 v1.3: 조회기간 최대 7일 → 여유 있게 6일 전 0시 ~ 현재
 
 
@@ -329,6 +334,8 @@ def fetch_g2b():
                     name = (it.get("bidNtceNm") or "").strip()
                     if not name or no in seen_no:
                         continue
+                    if any(x in name for x in G2B_EXCLUDE):
+                        continue
                     seen_no.add(no)
                     inst = it.get("ntceInsttNm") or it.get("dminsttNm") or ""
                     close = (it.get("bidClseDt") or "")[:16]
@@ -340,12 +347,28 @@ def fetch_g2b():
                     out.append({
                         "title": name, "url": link, "source": "나라장터(공식)",
                         "published": (it.get("bidNtceDt") or "")[:10],
-                        "summary": summary, "gov": True, "official": True,
+                        "summary": summary, "gov": True, "official": True, "deadline": close,
                     })
                 break  # 이 base가 응답했으면 다음 base는 시도 안 함
             time.sleep(0.5)
     print(f"  [나라장터] {len(out)}건")
     return out
+
+
+def gov_sort_key(art):
+    """공식 공고(마감 임박순) → 마감일 미표기 공고 → 뉴스(최신순)"""
+    if art.get("official"):
+        dl = art.get("deadline", "")
+        if dl:
+            return (0, dl, "")
+        return (1, "", "")
+    # 뉴스: 날짜 최신순이 되도록 날짜 문자열을 뒤집어 정렬
+    pub = art.get("published", "")
+    return (2, "", "".join(chr(255 - ord(c)) for c in pub))
+
+
+def is_expired(art, now_str):
+    return bool(art.get("official") and art.get("deadline") and art["deadline"] < now_str)
 
 
 def card_html(art):
@@ -562,8 +585,11 @@ def main():
         if uid not in seen:
             new_seen[uid] = today
             gov_new.append(a)
-    gov_all.sort(key=lambda a: a["published"], reverse=True)
-    gov_new.sort(key=lambda a: a["published"], reverse=True)
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    gov_all = [a for a in gov_all if not is_expired(a, now_str)]   # 마감 지난 공고 제외
+    gov_new = [a for a in gov_new if not is_expired(a, now_str)]
+    gov_all.sort(key=gov_sort_key)
+    gov_new.sort(key=gov_sort_key)
     all_results[GOV_KEY] = gov_all
     new_results[GOV_KEY] = gov_new[:MAX_NEW_ARTICLES * 2]
     print(f"  → 신규 {len(new_results[GOV_KEY])}건 / 전체 {len(gov_all)}건")
