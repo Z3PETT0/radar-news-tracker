@@ -309,8 +309,8 @@ def keyword_score(bid, keywords):
     return (6, f"키워드 일치: {', '.join(hit[:3])}") if hit else (0, "관심 키워드 없음")
 
 
-def discover_gemini_model(key):
-    """모델명이 단종(404)됐을 때, 계정에서 쓸 수 있는 최신 'flash' 모델을 목록에서 찾음"""
+def list_gemini_models(key):
+    """사용 가능한 flash 계열 모델을 후보 순서대로 반환 (가볍고 한가한 lite 먼저, 최신 버전 우선)"""
     try:
         req = urllib.request.Request(
             "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
@@ -319,19 +319,20 @@ def discover_gemini_model(key):
             models = json.loads(resp.read().decode("utf-8")).get("models", [])
     except Exception as e:
         print(f"  [AI판정] 모델 목록 조회 실패: {str(e)[:80]}")
-        return None
+        return []
     cands = []
     for m in models:
         name = m.get("name", "").replace("models/", "")
-        mm = re.fullmatch(r"gemini-(\d+(?:\.\d+)?)-flash", name)
+        mm = re.fullmatch(r"gemini-(\d+(?:\.\d+)?)-flash(-lite)?", name)
         if mm and "generateContent" in m.get("supportedGenerationMethods", []):
-            cands.append((float(mm.group(1)), name))
-    cands.sort(reverse=True)
-    return cands[0][1] if cands else None
+            cands.append((0 if mm.group(2) else 1, -float(mm.group(1)), name))
+    cands.sort()
+    return [c[2] for c in cands]
 
 
 def ai_score_bids(bids, profile):
-    """공고 제목·기관을 AI가 읽고 연계도(0~10)와 이유를 붙임. 한 건이라도 성공하면 True."""
+    """공고 제목·기관을 AI가 읽고 연계도(0~10)와 이유를 붙임. 한 건이라도 성공하면 True.
+    모델이 단종(404)·과부하(503/429)·지연(timeout)이면 다른 flash 계열 모델로 자동 전환."""
     key = os.environ.get(AI_KEY_ENV, "").strip()
     if not key or not bids:
         print(f"  [AI판정] {AI_KEY_ENV} 없음 또는 대상 없음 → 키워드 방식 사용")
@@ -346,65 +347,75 @@ def ai_score_bids(bids, profile):
         f"제품·사업: {desc}\n관심 키워드: {interests}"
     )
     model = AI_MODEL
-    retried = False
+    fallbacks = None            # 처음 문제가 생겼을 때 한 번만 목록 조회
+    failed = set()
     use_thinking_cfg = True
     ok = 0
     for i in range(0, len(bids), AI_CHUNK):
         chunk = bids[i:i + AI_CHUNK]
         items = [{"id": n, "title": b["title"], "org": b.get("org", "")} for n, b in enumerate(chunk)]
-        payload = {
-            "systemInstruction": {"parts": [{"text": system}]},
-            "contents": [{"role": "user", "parts": [{"text": json.dumps(items, ensure_ascii=False)}]}],
-            "generationConfig": {
-                "temperature": 0, "responseMimeType": "application/json",
-            },
-        }
-        if use_thinking_cfg:
-            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}   # 긴 '생각' 단계를 꺼서 응답 속도 향상
-        raw = ""
-        try:
-            for attempt in range(3):
-                req = urllib.request.Request(
-                    AI_ENDPOINT.format(model=model), data=json.dumps(payload).encode("utf-8"), method="POST",
-                    headers={"x-goog-api-key": key, "Content-Type": "application/json"},
-                )
+        done = False
+        for attempt in range(5):
+            cfg = {"temperature": 0, "responseMimeType": "application/json"}
+            if use_thinking_cfg:
+                cfg["thinkingConfig"] = {"thinkingBudget": 0}   # 긴 '생각' 단계를 꺼서 응답 속도 향상
+            payload = {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": json.dumps(items, ensure_ascii=False)}]}],
+                "generationConfig": cfg,
+            }
+            req = urllib.request.Request(
+                AI_ENDPOINT.format(model=model), data=json.dumps(payload).encode("utf-8"), method="POST",
+                headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+            )
+            raw = ""
+            try:
+                with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as resp:
+                    raw = resp.read().decode("utf-8", "replace")
+                data = json.loads(raw)
+                content = data["candidates"][0]["content"]["parts"][0]["text"]
+                m = re.search(r"\{.*\}", content, re.DOTALL)
+                results = json.loads(m.group(0) if m else content)["results"]
+                for r in results:
+                    b = chunk[int(r["id"])]
+                    b["ai_score"] = max(0, min(10, int(r["score"])))
+                    b["ai_reason"] = str(r.get("reason", ""))[:60]
+                    ok += 1
+                done = True
+                break
+            except urllib.error.HTTPError as he:
+                body = ""
                 try:
-                    with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as resp:
-                        raw = resp.read().decode("utf-8", "replace")
-                    break
-                except urllib.error.HTTPError as he:
-                    if he.code == 404 and not retried:       # 모델명 단종 → 최신 flash 모델로 한 번 재시도
-                        retried = True
-                        new_model = discover_gemini_model(key)
-                        if new_model and new_model != model:
-                            print(f"  [AI판정] 모델 {model} 사용 불가 → {new_model} 로 변경")
-                            model = new_model
-                            continue
-                    if he.code == 400 and "thinkingConfig" in payload["generationConfig"]:
-                        payload["generationConfig"].pop("thinkingConfig")   # 이 모델이 옵션을 거부하면 빼고 재시도
-                        use_thinking_cfg = False
-                        print("  [AI판정] thinkingConfig 거부됨 → 옵션 없이 재시도")
-                        continue
-                    raise
-            data = json.loads(raw)
-            content = data["candidates"][0]["content"]["parts"][0]["text"]
-            m = re.search(r"\{.*\}", content, re.DOTALL)
-            results = json.loads(m.group(0) if m else content)["results"]
-            for r in results:
-                b = chunk[int(r["id"])]
-                b["ai_score"] = max(0, min(10, int(r["score"])))
-                b["ai_reason"] = str(r.get("reason", ""))[:60]
-                ok += 1
-        except Exception as e:
-            body = ""
-            if hasattr(e, "read"):
-                try:
-                    body = e.read().decode("utf-8", "replace")[:300]
+                    body = he.read().decode("utf-8", "replace")[:150].replace("\n", " ")
                 except Exception:
                     pass
-            print(f"  [AI판정 경고] {str(e)[:80]} {body}")
-            if raw:
-                print(f"    [AI 원본 응답] {raw[:300]!r}")
+                if he.code == 400 and use_thinking_cfg:
+                    use_thinking_cfg = False                      # 이 모델이 옵션을 거부 → 빼고 재시도
+                    print("  [AI판정] thinkingConfig 거부됨 → 옵션 없이 재시도")
+                    continue
+                reason = f"HTTP {he.code} {body}"
+                switch = he.code in (404, 429, 500, 502, 503, 504)
+            except (TimeoutError, urllib.error.URLError, OSError) as e:
+                reason, switch = f"{str(e)[:60]} (응답 지연)", True
+            except Exception as e:
+                print(f"  [AI판정 경고] 응답 해석 실패: {str(e)[:80]}")
+                if raw:
+                    print(f"    [AI 원본 응답] {raw[:300]!r}")
+                break
+            print(f"  [AI판정 경고] {model}: {reason}")
+            if not switch:
+                break
+            failed.add(model)
+            if fallbacks is None:
+                fallbacks = list_gemini_models(key)
+            nxt = next((m for m in fallbacks if m not in failed), None)
+            if not nxt:
+                break
+            print(f"  [AI판정] 모델 변경: {model} → {nxt}")
+            model = nxt
+            time.sleep(3)
+        if not done and not model:
+            break
         time.sleep(2)
     print(f"  [AI판정] {ok}/{len(bids)}건 판정 (모델: {model})")
     return ok > 0
