@@ -12,6 +12,7 @@ import html as html_mod
 import os
 import re
 import time
+import urllib.error
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -68,7 +69,7 @@ DEFAULT_PRODUCT_DESC = (
 
 # ── AI 연계도 판정 (Google Gemini 무료 한도 사용. 키가 없거나 실패하면 키워드 방식으로 자동 대체) ──
 AI_KEY_ENV   = "GEMINI_API_KEY"
-AI_MODEL     = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+AI_MODEL     = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")   # 단종되면 아래에서 자동으로 최신 flash 모델을 찾음
 AI_ENDPOINT  = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 AI_MIN_SCORE = 5      # 0~10점 중 이 점수 이상만 표시
 AI_CHUNK     = 30     # 한 번에 판정할 공고 수
@@ -307,6 +308,27 @@ def keyword_score(bid, keywords):
     return (6, f"키워드 일치: {', '.join(hit[:3])}") if hit else (0, "관심 키워드 없음")
 
 
+def discover_gemini_model(key):
+    """모델명이 단종(404)됐을 때, 계정에서 쓸 수 있는 최신 'flash' 모델을 목록에서 찾음"""
+    try:
+        req = urllib.request.Request(
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+            headers={"x-goog-api-key": key})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            models = json.loads(resp.read().decode("utf-8")).get("models", [])
+    except Exception as e:
+        print(f"  [AI판정] 모델 목록 조회 실패: {str(e)[:80]}")
+        return None
+    cands = []
+    for m in models:
+        name = m.get("name", "").replace("models/", "")
+        mm = re.fullmatch(r"gemini-(\d+(?:\.\d+)?)-flash", name)
+        if mm and "generateContent" in m.get("supportedGenerationMethods", []):
+            cands.append((float(mm.group(1)), name))
+    cands.sort(reverse=True)
+    return cands[0][1] if cands else None
+
+
 def ai_score_bids(bids, profile):
     """공고 제목·기관을 AI가 읽고 연계도(0~10)와 이유를 붙임. 한 건이라도 성공하면 True."""
     key = os.environ.get(AI_KEY_ENV, "").strip()
@@ -322,7 +344,8 @@ def ai_score_bids(bids, profile):
         "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"reason\":\"20자 내외 한국어 이유\"}]} 만 출력한다.\n"
         f"제품·사업: {desc}\n관심 키워드: {interests}"
     )
-    url = AI_ENDPOINT.format(model=AI_MODEL)
+    model = AI_MODEL
+    retried = False
     ok = 0
     for i in range(0, len(bids), AI_CHUNK):
         chunk = bids[i:i + AI_CHUNK]
@@ -332,14 +355,26 @@ def ai_score_bids(bids, profile):
             "contents": [{"role": "user", "parts": [{"text": json.dumps(items, ensure_ascii=False)}]}],
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
         }
-        req = urllib.request.Request(
-            url, data=json.dumps(payload).encode("utf-8"), method="POST",
-            headers={"x-goog-api-key": key, "Content-Type": "application/json"},
-        )
         raw = ""
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                raw = resp.read().decode("utf-8", "replace")
+            for attempt in range(2):
+                req = urllib.request.Request(
+                    AI_ENDPOINT.format(model=model), data=json.dumps(payload).encode("utf-8"), method="POST",
+                    headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        raw = resp.read().decode("utf-8", "replace")
+                    break
+                except urllib.error.HTTPError as he:
+                    if he.code == 404 and not retried:       # 모델명 단종 → 최신 flash 모델로 한 번 재시도
+                        retried = True
+                        new_model = discover_gemini_model(key)
+                        if new_model and new_model != model:
+                            print(f"  [AI판정] 모델 {model} 사용 불가 → {new_model} 로 변경")
+                            model = new_model
+                            continue
+                    raise
             data = json.loads(raw)
             content = data["candidates"][0]["content"]["parts"][0]["text"]
             m = re.search(r"\{.*\}", content, re.DOTALL)
@@ -360,7 +395,7 @@ def ai_score_bids(bids, profile):
             if raw:
                 print(f"    [AI 원본 응답] {raw[:300]!r}")
         time.sleep(2)
-    print(f"  [AI판정] {ok}/{len(bids)}건 판정 (모델: {AI_MODEL})")
+    print(f"  [AI판정] {ok}/{len(bids)}건 판정 (모델: {model})")
     return ok > 0
 
 
