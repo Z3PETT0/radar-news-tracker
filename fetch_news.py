@@ -338,11 +338,15 @@ def ai_score_bids(bids, profile):
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
                      "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
         )
+        raw = ""
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+                raw = resp.read().decode("utf-8", "replace")
+            data = json.loads(raw)
             content = data["choices"][0]["message"]["content"]
-            results = json.loads(content)["results"]
+            # 모델이 ```json ... ``` 로 감싸거나 앞뒤에 설명을 붙여도 JSON 부분만 추출
+            m = re.search(r"\{.*\}", content, re.DOTALL)
+            results = json.loads(m.group(0) if m else content)["results"]
             for r in results:
                 b = chunk[int(r["id"])]
                 b["ai_score"] = max(0, min(10, int(r["score"])))
@@ -356,6 +360,8 @@ def ai_score_bids(bids, profile):
                 except Exception:
                     pass
             print(f"  [AI판정 경고] {str(e)[:80]} {body}")
+            if raw:
+                print(f"    [AI 원본 응답] {raw[:300]!r}")
         time.sleep(1)
     print(f"  [AI판정] {ok}/{len(bids)}건 판정")
     return ok > 0
