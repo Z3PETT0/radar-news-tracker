@@ -59,6 +59,18 @@ G2B_EXCLUDE = [
     "경비", "청소", "시설관리", "급식", "식자재", "폐기물", "방역", "소독", "세탁",
     "조경", "도색", "누수", "보안관제", "청사", "관리용역", "인력파견", "차량임차",
 ]
+# ── 관심 프로필 (data/interest_profile.txt 를 GitHub에서 직접 수정하면 코드 변경 없이 반영) ──
+PROFILE_FILE = DATA_DIR / "interest_profile.txt"
+DEFAULT_PRODUCT_DESC = (
+    "AFI920: 자동차·로봇·산업용 4D 이미징 레이더 제품. 자율주행/ADAS, 로보택시, 로봇·AMR, "
+    "산업 센서, 레이더 시뮬레이션·검증(RIDE) 사업과 연계되는 공고가 관심 대상."
+)
+
+# ── AI 연계도 판정 (GitHub Models 무료 한도 사용, 실패 시 키워드 방식으로 자동 대체) ──
+AI_ENDPOINT  = "https://models.github.ai/inference/chat/completions"
+AI_MODEL     = "openai/gpt-4o-mini"
+AI_MIN_SCORE = 5      # 0~10점 중 이 점수 이상만 표시
+AI_CHUNK     = 30     # 한 번에 판정할 공고 수
 G2B_DAYS = 6   # 참고문서 v1.3: 조회기간 최대 7일 → 여유 있게 6일 전 0시 ~ 현재
 
 
@@ -270,6 +282,85 @@ def fetch_rss(url):
     return articles
 
 
+def load_profile():
+    """data/interest_profile.txt 읽기. [섹션명] 아래에 한 줄씩 적고, # 로 시작하는 줄은 주석."""
+    sections = {"제품설명": [], "검색키워드": [], "제외키워드": []}
+    if PROFILE_FILE.exists():
+        cur = None
+        for line in PROFILE_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                cur = line[1:-1].strip()
+                sections.setdefault(cur, [])
+                continue
+            if cur:
+                sections[cur].append(line)
+    return sections
+
+
+def keyword_score(bid, keywords):
+    """AI를 못 쓸 때의 대체 판정: 관심 키워드가 제목에 있으면 통과"""
+    hit = [k for k in keywords if k.lower() in bid["title"].lower()]
+    return (6, f"키워드 일치: {', '.join(hit[:3])}") if hit else (0, "관심 키워드 없음")
+
+
+def ai_score_bids(bids, profile):
+    """공고 제목·기관을 AI가 읽고 연계도(0~10)와 이유를 붙임. 성공하면 True."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token or not bids:
+        print("  [AI판정] GITHUB_TOKEN 없음 또는 대상 없음 → 키워드 방식 사용")
+        return False
+    desc = " ".join(profile["제품설명"]) or DEFAULT_PRODUCT_DESC
+    interests = ", ".join(profile["검색키워드"] or G2B_KEYWORDS)
+    system = (
+        "너는 레이더 센서 회사의 사업개발 담당을 돕는 공공조달·정부과제 공고 선별기다. "
+        "공고 제목과 기관을 보고, 아래 제품·관심사와 사업화·납품·연구협력으로 연계될 가능성을 0~10점으로 평가한다. "
+        "경비·청소·시설관리 같은 일반 용역, 제품과 무관한 구매는 0~2점. "
+        "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"reason\":\"20자 내외 한국어 이유\"}]} 만 출력한다.\n"
+        f"제품·사업: {desc}\n관심 키워드: {interests}"
+    )
+    ok = 0
+    for i in range(0, len(bids), AI_CHUNK):
+        chunk = bids[i:i + AI_CHUNK]
+        items = [{"id": n, "title": b["title"], "org": b.get("org", "")} for n, b in enumerate(chunk)]
+        payload = {
+            "model": AI_MODEL, "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
+            ],
+        }
+        req = urllib.request.Request(
+            AI_ENDPOINT, data=json.dumps(payload).encode("utf-8"), method="POST",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                     "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            content = data["choices"][0]["message"]["content"]
+            results = json.loads(content)["results"]
+            for r in results:
+                b = chunk[int(r["id"])]
+                b["ai_score"] = max(0, min(10, int(r["score"])))
+                b["ai_reason"] = str(r.get("reason", ""))[:60]
+                ok += 1
+        except Exception as e:
+            body = ""
+            if hasattr(e, "read"):
+                try:
+                    body = e.read().decode("utf-8", "replace")[:200]
+                except Exception:
+                    pass
+            print(f"  [AI판정 경고] {str(e)[:80]} {body}")
+        time.sleep(1)
+    print(f"  [AI판정] {ok}/{len(bids)}건 판정")
+    return ok > 0
+
+
 def is_gov(art):
     return bool(GOV_PATTERN.search(art["title"] + " " + art.get("summary", "")))
 
@@ -288,6 +379,9 @@ def _g2b_items(data):
 
 def fetch_g2b():
     """나라장터 입찰공고(용역·물품)를 키워드별로 조회. 인증키(DATA_GO_KR_KEY)가 없으면 건너뜀."""
+    profile = load_profile()
+    keywords = profile["검색키워드"] or G2B_KEYWORDS
+    excludes = G2B_EXCLUDE + profile["제외키워드"]
     key = os.environ.get(G2B_KEY_ENV, "").strip()
     if not key:
         print("  [나라장터] DATA_GO_KR_KEY 없음 → 건너뜀")
@@ -298,7 +392,7 @@ def fetch_g2b():
     out, seen_no = [], set()
     working_base = None
     warned = set()
-    for kw in G2B_KEYWORDS:
+    for kw in keywords:
         for op in G2B_OPERATIONS:
             bases = [working_base] if working_base else G2B_BASES
             for base in bases:
@@ -334,7 +428,7 @@ def fetch_g2b():
                     name = (it.get("bidNtceNm") or "").strip()
                     if not name or no in seen_no:
                         continue
-                    if any(x in name for x in G2B_EXCLUDE):
+                    if any(x in name for x in excludes):
                         continue
                     seen_no.add(no)
                     inst = it.get("ntceInsttNm") or it.get("dminsttNm") or ""
@@ -347,7 +441,7 @@ def fetch_g2b():
                     out.append({
                         "title": name, "url": link, "source": "나라장터(공식)",
                         "published": (it.get("bidNtceDt") or "")[:10],
-                        "summary": summary, "gov": True, "official": True, "deadline": close,
+                        "summary": summary, "gov": True, "official": True, "deadline": close, "org": inst,
                     })
                 break  # 이 base가 응답했으면 다음 base는 시도 안 함
             time.sleep(0.5)
@@ -359,12 +453,13 @@ def gov_sort_key(art):
     """공식 공고(마감 임박순) → 마감일 미표기 공고 → 뉴스(최신순)"""
     if art.get("official"):
         dl = art.get("deadline", "")
+        hi = 0 if art.get("ai_score", 0) >= 8 else 1
         if dl:
-            return (0, dl, "")
-        return (1, "", "")
+            return (0, hi, dl, "")
+        return (1, hi, "", "")
     # 뉴스: 날짜 최신순이 되도록 날짜 문자열을 뒤집어 정렬
     pub = art.get("published", "")
-    return (2, "", "".join(chr(255 - ord(c)) for c in pub))
+    return (2, 0, "", "".join(chr(255 - ord(c)) for c in pub))
 
 
 def is_expired(art, now_str):
@@ -383,6 +478,10 @@ def card_html(art):
     elif art.get("gov"):
         meta = '<span class="badge">🏛 과제·입찰</span> ' + meta
     summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
+    if art.get("ai_score") is not None:
+        lvl = "높음" if art["ai_score"] >= 8 else "보통"
+        reason = html_mod.escape(art.get("ai_reason", ""))
+        summary_html += f'<p class="card-ai">🎯 연계 가능성 {lvl} ({art["ai_score"]}/10) — {reason}</p>'
     if art.get("official"):
         link_html = f'<a class="bid-btn" href="{url}" target="_blank" rel="noopener">📄 공고 바로가기 →</a>'
     else:
@@ -459,6 +558,10 @@ def build_html(new_results, all_results, generated_at):
     display: inline-block; font-size: 11px; font-weight: 600;
     background: #fef3c7; color: #92400e; border-radius: 6px;
     padding: 1px 7px; margin-right: 4px;
+  }}
+  .card-ai {{
+    font-size: 13px; color: #065f46; background: #ecfdf5;
+    border-radius: 6px; padding: 6px 10px; margin: 0 0 10px;
   }}
   .bid-btn {{
     display: inline-block; background: #16a34a; color: #fff !important;
@@ -576,7 +679,25 @@ def main():
                 gov_all.append(a)
                 if a in new_results.get(key, []):
                     gov_new.append(a)
-    for a in fetch_g2b():
+    g2b = fetch_g2b()
+    prof = load_profile()
+    if ai_score_bids(g2b, prof):
+        kept = []
+        for a in g2b:
+            sc = a.get("ai_score")
+            if sc is None:                       # 판정 누락분은 키워드 방식으로 보완
+                sc, why = keyword_score(a, prof["검색키워드"] or G2B_KEYWORDS)
+                a["ai_score"], a["ai_reason"] = sc, why
+            if sc >= AI_MIN_SCORE:
+                kept.append(a)
+            else:
+                print(f"    [연계도 낮음 제외] {a['title'][:40]} ({sc}점, {a.get('ai_reason','')})")
+        g2b = kept
+    else:
+        for a in g2b:
+            a["ai_score"], a["ai_reason"] = keyword_score(a, prof["검색키워드"] or G2B_KEYWORDS)
+        g2b = [a for a in g2b if a["ai_score"] >= AI_MIN_SCORE]
+    for a in g2b:
         if a["url"] in gov_urls:
             continue
         gov_urls.add(a["url"])
