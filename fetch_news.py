@@ -526,64 +526,182 @@ def is_expired(art, now_str):
     return bool(art.get("official") and art.get("deadline") and art["deadline"] < now_str)
 
 
-def card_html(art):
-    title   = art["title"].replace("<", "&lt;").replace(">", "&gt;")
-    source  = art.get("source", "")
-    pub     = art.get("published", "")
-    summary = art.get("summary", "")
-    url     = art["url"]
-    meta    = "&nbsp;·&nbsp;".join(filter(None, [source, pub]))
-    if art.get("official"):
-        meta = '<span class="badge official">공식 공고</span> ' + meta
-    elif art.get("gov"):
-        meta = '<span class="badge">🏛 과제·입찰</span> ' + meta
+KST_TZ = datetime.timezone(datetime.timedelta(hours=9))
+# 탭·섹션 표시 순서 (왼쪽 → 오른쪽 / 위 → 아래)
+DISPLAY_ORDER = ["robotaxi", "autonomous_driving", "amr_logistics", "imaging_radar", GOV_KEY]
+BID_VISIBLE = 8     # 공식 공고 목록에서 처음부터 보여줄 개수
+
+
+def esc(text):
+    return html_mod.escape(text or "", quote=True)
+
+
+def dday_days(deadline, now):
+    """마감까지 남은 일수 (오늘 마감=0). 마감일이 없거나 해석 불가면 None"""
+    if not deadline:
+        return None
+    try:
+        dt = datetime.datetime.strptime(deadline[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+    return (dt.date() - now.date()).days
+
+
+def card_html(art, is_new=False):
+    """일반 뉴스 카드 (제목 자체가 링크, 요약은 2줄까지만)"""
+    title   = esc(art["title"])
+    source  = esc(art.get("source", ""))
+    pub     = esc(art.get("published", ""))
+    summary = esc(art.get("summary", ""))
+    url     = esc(art["url"])
+    badges  = ""
+    if is_new:
+        badges += '<span class="badge new">NEW</span>'
+    if art.get("gov"):
+        badges += '<span class="badge">🏛 과제·입찰</span>'
+    meta = " · ".join(filter(None, [source, pub]))
     summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
-    if art.get("ai_score") is not None:
-        lvl = "높음" if art["ai_score"] >= 8 else "보통"
-        reason = html_mod.escape(art.get("ai_reason", ""))
-        summary_html += f'<p class="card-ai">🎯 연계 가능성 {lvl} ({art["ai_score"]}/10) — {reason}</p>'
-    if art.get("official"):
-        link_html = f'<a class="bid-btn" href="{url}" target="_blank" rel="noopener">📄 공고 바로가기 →</a>'
-    else:
-        link_html = f'<a class="card-link" href="{url}" target="_blank" rel="noopener">원문 보기 →</a>'
     return f"""
-<div class="card">
-  <div class="card-meta">{meta}</div>
+<article class="card">
+  <div class="card-meta">{badges}{meta}</div>
   <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
   {summary_html}
-  {link_html}
-</div>"""
+</article>"""
 
 
-def cards_with_more(arts):
-    """처음 VISIBLE_COUNT개는 바로 보여주고, 나머지는 '더보기' 버튼으로 펼침"""
-    html = "".join(card_html(a) for a in arts[:VISIBLE_COUNT])
+def bid_row_html(art, now, is_new=False):
+    """나라장터 공식 공고 한 줄 (제목 · 기관 · 마감 D-n · 연계도 · 바로가기)"""
+    title = esc(art["title"])
+    url   = esc(art["url"])
+    org   = esc(art.get("org", ""))
+    dl    = art.get("deadline", "")
+    days  = dday_days(dl, now)
+    if days is None:
+        dd = '<span class="dd none">마감 미표기</span>'
+    elif days <= 3:
+        dd = f'<span class="dd urgent">D-{days}</span>' if days > 0 else '<span class="dd urgent">오늘 마감</span>'
+    else:
+        dd = f'<span class="dd">D-{days}</span>'
+    meta = " · ".join(filter(None, [org, f"마감 {esc(dl)}" if dl else ""]))
+    score = art.get("ai_score")
+    ai = ""
+    if score is not None:
+        lvl = "high" if score >= 8 else "mid"
+        ai = f'<div class="bid-ai {lvl}">🎯 {score}/10 · {esc(art.get("ai_reason", ""))}</div>'
+    new_badge = '<span class="badge new">NEW</span>' if is_new else ""
+    return f"""
+<li class="bid">
+  <div class="bid-main">
+    <a class="bid-title" href="{url}" target="_blank" rel="noopener">{new_badge}{title}</a>
+    <div class="bid-meta">{meta}</div>
+    {ai}
+  </div>
+  <div class="bid-side">{dd}<a class="bid-btn" href="{url}" target="_blank" rel="noopener">공고 ↗</a></div>
+</li>"""
+
+
+def collapse_btn():
+    return ("<button type=\"button\" class=\"more-collapse\" "
+            "onclick=\"var d=this.closest('details');d.open=false;d.scrollIntoView({block:'center'});\">접기 ▲</button>")
+
+
+def cards_with_more(arts, new_urls):
+    """처음 VISIBLE_COUNT개는 바로, 나머지는 '더보기' (펼치면 맨 아래에 접기 버튼)"""
+    first = "".join(card_html(a, a["url"] in new_urls) for a in arts[:VISIBLE_COUNT])
+    html = f'<div class="grid">{first}</div>'
     rest = arts[VISIBLE_COUNT:]
     if rest:
+        body = "".join(card_html(a, a["url"] in new_urls) for a in rest)
         html += f"""
 <details class="more">
   <summary>더보기 ({len(rest)}건) ▼</summary>
-  {"".join(card_html(a) for a in rest)}
-  <button type="button" class="more-collapse" onclick="var d=this.closest('details');d.open=false;d.scrollIntoView({{block:'center'}});">접기 ▲</button>
+  <div class="grid">{body}</div>
+  {collapse_btn()}
+</details>"""
+    return html
+
+
+def bids_with_more(bids, new_urls, now):
+    first = "".join(bid_row_html(a, now, a["url"] in new_urls) for a in bids[:BID_VISIBLE])
+    html = f'<ul class="bids">{first}</ul>'
+    rest = bids[BID_VISIBLE:]
+    if rest:
+        body = "".join(bid_row_html(a, now, a["url"] in new_urls) for a in rest)
+        html += f"""
+<details class="more">
+  <summary>공식 공고 더보기 ({len(rest)}건) ▼</summary>
+  <ul class="bids">{body}</ul>
+  {collapse_btn()}
 </details>"""
     return html
 
 
 def build_html(new_results, all_results, generated_at):
+    now = datetime.datetime.now(KST_TZ).replace(tzinfo=None)
+
+    # ── 상단 요약 수치 ──
+    total_new = sum(len(v) for k, v in new_results.items() if k != GOV_KEY)
+    gov_all = all_results.get(GOV_KEY, [])
+    officials = [a for a in gov_all if a.get("official")]
+    urgent = sum(1 for a in officials if (dday_days(a.get("deadline", ""), now) is not None
+                                          and dday_days(a.get("deadline", ""), now) <= 3))
+    high = sum(1 for a in officials if a.get("ai_score", 0) >= 8)
+    summary_bar = f"""
+<div class="summary-bar">
+  <div class="sum"><b>{total_new}</b><span>오늘 신규 뉴스</span></div>
+  <a class="sum" href="#sec-{GOV_KEY}"><b>{len(officials)}</b><span>공식 공고</span></a>
+  <a class="sum {'hot' if urgent else ''}" href="#sec-{GOV_KEY}"><b>{urgent}</b><span>마감 임박</span></a>
+  <a class="sum {'hot' if high else ''}" href="#sec-{GOV_KEY}"><b>{high}</b><span>연계 높음</span></a>
+</div>"""
+
+    # ── 상단 탭 ──
+    order = [k for k in DISPLAY_ORDER if k in TOPICS] + [k for k in TOPICS if k not in DISPLAY_ORDER]
+    tabs = "".join(
+        f'<a href="#sec-{k}">{esc(TOPICS[k]["label"].split(" (")[0])}</a>' for k in order
+    )
+
+    # ── 섹션 ──
     sections_html = ""
-    for topic_key, info in TOPICS.items():
+    for topic_key in order:
+        info = TOPICS[topic_key]
         new_arts    = new_results.get(topic_key, [])
         all_arts    = all_results.get(topic_key, [])
-        recent_arts = [a for a in all_arts if a not in new_arts][:MAX_RECENT_ARTICLES]
+        new_urls    = {a["url"] for a in new_arts}
+        label       = esc(info["label"])
+        inner = ""
 
-        sections_html += f'<h2 class="topic-title">{info["label"]}</h2>\n'
-        if new_arts:
-            sections_html += cards_with_more(new_arts)
+        if topic_key == GOV_KEY:
+            bids = [a for a in all_arts if a.get("official")]
+            news = [a for a in all_arts if not a.get("official")]
+            news_new = [a for a in news if a["url"] in new_urls]
+            if bids:
+                inner += '<p class="sub-label">📄 나라장터 공식 공고 <small>(연계도 높은 순 · 마감 임박 순)</small></p>\n'
+                inner += bids_with_more(bids, new_urls, now)
+            else:
+                inner += '<p class="empty">연계 가능한 공식 공고가 아직 없습니다.</p>\n'
+            inner += '<p class="sub-label">📰 관련 뉴스</p>\n'
+            shown_news = news_new if news_new else news[:MAX_RECENT_ARTICLES]
+            if shown_news:
+                inner += cards_with_more(shown_news, new_urls)
+            else:
+                inner += '<p class="empty">관련 뉴스가 없습니다.</p>\n'
+            count = len(bids) + len(news)
         else:
-            sections_html += '<p class="empty">오늘은 새로운 기사가 없습니다.</p>\n'
-            if recent_arts:
-                sections_html += '<p class="recent-label">📋 최근 기사</p>\n'
-                sections_html += cards_with_more(recent_arts)
+            recent_arts = [a for a in all_arts if a["url"] not in new_urls][:MAX_RECENT_ARTICLES]
+            if new_arts:
+                inner += cards_with_more(new_arts, new_urls)
+            else:
+                inner += '<p class="empty">오늘은 새로운 기사가 없습니다.</p>\n'
+                if recent_arts:
+                    inner += '<p class="sub-label">📋 최근 기사</p>\n'
+                    inner += cards_with_more(recent_arts, new_urls)
+            count = len(all_arts)
+
+        sections_html += f"""
+<details class="sec" id="sec-{topic_key}"{"" if topic_key == GOV_KEY else " open"}>
+  <summary class="topic-title"><span>{label}</span><span class="cnt">{count}건</span></summary>
+  {inner}
+</details>"""
 
     page = f"""<!DOCTYPE html>
 <html lang="ko">
@@ -596,67 +714,103 @@ def build_html(new_results, all_results, generated_at):
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="레이더 뉴스">
 <style>
+  :root {{ --blue:#2f5fa6; --line:#e6dfcc; --muted:#8a8272; }}
+  * {{ box-sizing: border-box; }}
+  html {{ scroll-behavior: smooth; }}
   body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
                  "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-    max-width: 800px; margin: 0 auto;
-    padding: 24px 16px 80px;
-    background: #f7f7f8; color: #1a1a1a; line-height: 1.6;
+    max-width: 1100px; margin: 0 auto; padding: 16px 16px 80px;
+    background: #f6f1e4; color: #2f2b24; line-height: 1.5;
   }}
-  header {{ margin-bottom: 32px; }}
-  h1 {{ font-size: 24px; margin-bottom: 4px; }}
-  .updated {{ color: #666; font-size: 14px; }}
+  header {{ margin-bottom: 12px; }}
+  h1 {{ font-size: 22px; margin: 0 0 2px; }}
+  .updated {{ color: #6b6455; font-size: 13px; }}
+
+  .summary-bar {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 8px; }}
+  .sum {{ background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:8px 6px; text-align:center; }}
+  .sum b {{ display:block; font-size:20px; line-height:1.2; }}
+  .sum span {{ font-size:11px; color:#6b6455; }}
+  .sum.hot b {{ color:#dc2626; }}
+  a.sum {{ color: inherit; text-decoration: none; }}
+  a.sum:hover {{ background: #fbf7ea; }}
+
+  nav.tabs {{
+    position: sticky; top: 0; z-index: 10; display: flex; gap: 6px; overflow-x: auto;
+    padding: 8px 0; margin: 0 0 8px; background: #f6f1e4d9; backdrop-filter: blur(6px);
+    scrollbar-width: none;
+  }}
+  nav.tabs::-webkit-scrollbar {{ display: none; }}
+  nav.tabs a {{
+    flex: 0 0 auto; font-size: 13px; font-weight: 600; color: var(--blue); text-decoration: none;
+    background:#fffdf8; border: 1px solid #d8cfb8; border-radius: 999px; padding: 6px 12px; white-space: nowrap;
+  }}
+  nav.tabs a:hover {{ background: #f3ecd6; }}
+
+  details.sec {{ scroll-margin-top: 56px; margin-top: 14px; }}
   .topic-title {{
-    font-size: 19px; margin-top: 40px; margin-bottom: 16px;
-    padding-bottom: 8px; border-bottom: 2px solid #2563eb;
+    list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    font-size: 17px; font-weight: 700; padding: 8px 2px; border-bottom: 2px solid var(--blue); margin-bottom: 12px;
   }}
-  .card {{
-    background: #fff; border: 1px solid #e5e5e5;
-    border-radius: 10px; padding: 16px 20px; margin-bottom: 14px;
+  .topic-title::-webkit-details-marker {{ display: none; }}
+  .topic-title::after {{ content: "▾"; color: var(--blue); margin-left: 8px; }}
+  details.sec:not([open]) > .topic-title::after {{ content: "▸"; }}
+  .topic-title span:first-child {{ flex: 1; }}
+  .cnt {{ font-size: 12px; font-weight: 600; color: var(--muted); }}
+  .sub-label {{ font-size: 13px; color: #5c5546; font-weight: 700; margin: 12px 0 8px 2px; }}
+  .sub-label small {{ font-weight: 400; color: var(--muted); }}
+  .empty {{ color: #9a927f; font-size: 14px; margin: 4px 2px 8px; }}
+
+  .grid {{ display: grid; grid-template-columns: 1fr; gap: 10px; }}
+  @media (min-width: 760px) {{ .grid {{ grid-template-columns: 1fr 1fr; }} }}
+  .card {{ background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:10px 14px; }}
+  .card-meta {{ font-size: 12px; color: var(--muted); margin-bottom: 2px; }}
+  .card-title {{ font-size: 15px; margin: 0 0 4px; line-height: 1.4; }}
+  .card-title a {{ color:#2f2b24; text-decoration:none; }}
+  .card-title a:hover {{ text-decoration: underline; color: var(--blue); }}
+  .card-summary {{
+    font-size: 13px; color:#4a453a; margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }}
+
   .badge {{
-    display: inline-block; font-size: 11px; font-weight: 600;
-    background: #fef3c7; color: #92400e; border-radius: 6px;
-    padding: 1px 7px; margin-right: 4px;
+    display:inline-block; font-size:11px; font-weight:600; background:#f5e7c0; color:#7a4b12;
+    border-radius:6px; padding:0 6px; margin-right:4px;
   }}
-  .card-ai {{
-    font-size: 13px; color: #065f46; background: #ecfdf5;
-    border-radius: 6px; padding: 6px 10px; margin: 0 0 10px;
+  .badge.new {{ background:#e0e6f3; color:#2f5fa6; }}
+
+  ul.bids {{ list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }}
+  li.bid {{
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:10px 14px;
   }}
+  .bid-main {{ min-width: 0; flex: 1; }}
+  .bid-title {{ font-size: 14px; font-weight: 700; color:#2f2b24; text-decoration:none; line-height:1.4; }}
+  .bid-title:hover {{ text-decoration: underline; color: var(--blue); }}
+  .bid-meta {{ font-size: 12px; color: var(--muted); margin-top: 2px; }}
+  .bid-ai {{ font-size: 12px; margin-top: 4px; padding: 2px 8px; border-radius: 6px; display: inline-block; }}
+  .bid-ai.high {{ background:#e1ecd2; color:#3d5a1f; }}
+  .bid-ai.mid  {{ background:#efe9d6; color:#5c5546; }}
+  .bid-side {{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex: 0 0 auto; }}
+  .dd {{ font-size: 12px; font-weight: 700; color:#5c5546; }}
+  .dd.urgent {{ color:#dc2626; }}
+  .dd.none {{ color:#999; font-weight:500; }}
   .bid-btn {{
-    display: inline-block; background: #16a34a; color: #fff !important;
-    font-size: 13px; font-weight: 600; text-decoration: none;
-    padding: 8px 14px; border-radius: 8px;
+    background:#5a8a3c; color:#fff !important; font-size:12px; font-weight:700;
+    text-decoration:none; padding:5px 12px; border-radius:8px; white-space: nowrap;
   }}
-  .bid-btn:hover {{ background: #15803d; }}
-  .badge.official {{ background: #dcfce7; color: #166534; }}
-  .card-meta  {{ font-size: 12px; color: #888; margin-bottom: 6px; }}
-  .card-title {{ font-size: 16px; margin: 0 0 8px; }}
-  .card-title a {{ color: #1a1a1a; text-decoration: none; }}
-  .card-title a:hover {{ text-decoration: underline; }}
-  .card-summary {{ font-size: 14px; color: #333; margin: 0 0 8px; }}
-  .card-link {{ font-size: 13px; color: #2563eb; text-decoration: none; }}
-  .empty {{ color: #999; font-size: 14px; margin-bottom: 8px; }}
-  .recent-label {{
-    font-size: 13px; color: #555; font-weight: 600;
-    margin: 16px 0 10px; padding-left: 4px;
+  .bid-btn:hover {{ background:#4a7330; }}
+  @media (min-width: 760px) {{ ul.bids {{ grid-template-columns: 1fr 1fr; }} }}
+
+  details.more > summary, .more-collapse {{
+    list-style: none; cursor: pointer; text-align: center; display:block; width:100%;
+    background:#fffdf8; border:1px solid #d8cfb8; border-radius:10px; padding:10px;
+    margin: 10px 0 4px; font-family: inherit; font-size:13px; font-weight:600; color: var(--blue);
   }}
-  details.more > summary {{
-    list-style: none; cursor: pointer; text-align: center;
-    background: #fff; border: 1px solid #d4d4d8; border-radius: 10px;
-    padding: 12px; margin-bottom: 14px;
-    font-size: 14px; font-weight: 600; color: #2563eb;
-  }}
-  details.more > summary::-webkit-details-marker {{ display: none; }}
-  details.more > summary:hover {{ background: #f0f5ff; }}
+  details.more > summary::-webkit-details-marker {{ display:none; }}
+  details.more > summary:hover, .more-collapse:hover {{ background:#f3ecd6; }}
   details.more[open] > summary {{ display: none; }}
-  .more-collapse {{
-    display: block; width: 100%; cursor: pointer; text-align: center;
-    background: #fff; border: 1px solid #d4d4d8; border-radius: 10px;
-    padding: 12px; margin-bottom: 14px; font-family: inherit;
-    font-size: 14px; font-weight: 600; color: #2563eb;
-  }}
-  .more-collapse:hover {{ background: #f0f5ff; }}
+  details.more[open] {{ margin-top: 10px; }}
 </style>
 </head>
 <body>
@@ -664,7 +818,22 @@ def build_html(new_results, all_results, generated_at):
   <h1>📡 레이더 기술 뉴스 트래커</h1>
   <div class="updated">마지막 업데이트: {generated_at} (매일 자동 갱신)</div>
 </header>
+{summary_bar}
+<nav class="tabs">{tabs}</nav>
 {sections_html}
+<script>
+(function () {{
+  function openFor(h) {{
+    if (!h) return;
+    try {{ var el = document.querySelector(h); if (el && el.tagName === 'DETAILS') el.open = true; }} catch (e) {{}}
+  }}
+  document.querySelectorAll('nav.tabs a, a.sum').forEach(function (a) {{
+    a.addEventListener('click', function () {{ openFor(a.getAttribute('href')); }});
+  }});
+  window.addEventListener('hashchange', function () {{ openFor(location.hash); }});
+  openFor(location.hash);
+}})();
+</script>
 </body>
 </html>
 """
