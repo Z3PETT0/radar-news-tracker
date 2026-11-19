@@ -554,17 +554,14 @@ def card_html(art, is_new=False):
     pub     = esc(art.get("published", ""))
     summary = esc(art.get("summary", ""))
     url     = esc(art["url"])
-    badges  = ""
-    if is_new:
-        badges += '<span class="badge new">NEW</span>'
-    if art.get("gov"):
-        badges += '<span class="badge">🏛 과제·입찰</span>'
+    new_badge = '<span class="badge new">NEW</span>' if is_new else ""
+    gov_badge = '<span class="badge">🏛 과제·입찰</span>' if art.get("gov") else ""
     meta = " · ".join(filter(None, [source, pub]))
     summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
     return f"""
 <article class="card">
-  <div class="card-meta">{badges}{meta}</div>
-  <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
+  <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{new_badge}{title}</a></h3>
+  <div class="card-meta">{gov_badge}{meta}</div>
   {summary_html}
 </article>"""
 
@@ -714,7 +711,11 @@ def build_html(new_results, all_results, generated_at):
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="레이더 뉴스">
 <style>
-  :root {{ --blue:#2f5fa6; --line:#e6dfcc; --muted:#8a8272; }}
+  :root {{
+    --blue:#2f5fa6; --line:#e6dfcc; --muted:#8a8272;
+    --fs-title:14px; --fs-meta:12px; --fs-body:13px;
+    --lh-title:1.4; --lh-body:1.5; --gap:8px; --pad:10px 14px;
+  }}
   * {{ box-sizing: border-box; }}
   html {{ scroll-behavior: smooth; }}
   body {{
@@ -761,15 +762,15 @@ def build_html(new_results, all_results, generated_at):
   .sub-label small {{ font-weight: 400; color: var(--muted); }}
   .empty {{ color: #9a927f; font-size: 14px; margin: 4px 2px 8px; }}
 
-  .grid {{ display: grid; grid-template-columns: 1fr; gap: 10px; }}
+  .grid {{ display: grid; grid-template-columns: 1fr; gap: var(--gap); }}
   @media (min-width: 760px) {{ .grid {{ grid-template-columns: 1fr 1fr; }} }}
-  .card {{ background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:10px 14px; }}
-  .card-meta {{ font-size: 12px; color: var(--muted); margin-bottom: 2px; }}
-  .card-title {{ font-size: 15px; margin: 0 0 4px; line-height: 1.4; }}
+  .card {{ background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding: var(--pad); }}
+  .card-meta {{ font-size: var(--fs-meta); color: var(--muted); margin-top: 2px; }}
+  .card-title {{ font-size: var(--fs-title); font-weight: 700; margin: 0; line-height: var(--lh-title); }}
   .card-title a {{ color:#2f2b24; text-decoration:none; }}
   .card-title a:hover {{ text-decoration: underline; color: var(--blue); }}
   .card-summary {{
-    font-size: 13px; color:#4a453a; margin: 0;
+    font-size: var(--fs-body); line-height: var(--lh-body); color:#4a453a; margin: 6px 0 0;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }}
 
@@ -779,15 +780,15 @@ def build_html(new_results, all_results, generated_at):
   }}
   .badge.new {{ background:#e0e6f3; color:#2f5fa6; }}
 
-  ul.bids {{ list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }}
+  ul.bids {{ list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: var(--gap); }}
   li.bid {{
     display: flex; gap: 10px; align-items: center; justify-content: space-between;
-    background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding:10px 14px;
+    background:#fffdf8; border:1px solid var(--line); border-radius:10px; padding: var(--pad);
   }}
   .bid-main {{ min-width: 0; flex: 1; }}
-  .bid-title {{ font-size: 14px; font-weight: 700; color:#2f2b24; text-decoration:none; line-height:1.4; }}
+  .bid-title {{ font-size: var(--fs-title); font-weight: 700; color:#2f2b24; text-decoration:none; line-height: var(--lh-title); }}
   .bid-title:hover {{ text-decoration: underline; color: var(--blue); }}
-  .bid-meta {{ font-size: 12px; color: var(--muted); margin-top: 2px; }}
+  .bid-meta {{ font-size: var(--fs-meta); color: var(--muted); margin-top: 2px; }}
   .bid-ai {{ font-size: 12px; margin-top: 4px; padding: 2px 8px; border-radius: 6px; display: inline-block; }}
   .bid-ai.high {{ background:#e1ecd2; color:#3d5a1f; }}
   .bid-ai.mid  {{ background:#efe9d6; color:#5c5546; }}
