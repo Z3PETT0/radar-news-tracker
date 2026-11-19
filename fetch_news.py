@@ -66,9 +66,10 @@ DEFAULT_PRODUCT_DESC = (
     "산업 센서, 레이더 시뮬레이션·검증(RIDE) 사업과 연계되는 공고가 관심 대상."
 )
 
-# ── AI 연계도 판정 (GitHub Models 무료 한도 사용, 실패 시 키워드 방식으로 자동 대체) ──
-AI_ENDPOINT  = "https://models.github.ai/inference/chat/completions"
-AI_MODEL     = "openai/gpt-4o-mini"
+# ── AI 연계도 판정 (Google Gemini 무료 한도 사용. 키가 없거나 실패하면 키워드 방식으로 자동 대체) ──
+AI_KEY_ENV   = "GEMINI_API_KEY"
+AI_MODEL     = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+AI_ENDPOINT  = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 AI_MIN_SCORE = 5      # 0~10점 중 이 점수 이상만 표시
 AI_CHUNK     = 30     # 한 번에 판정할 공고 수
 G2B_DAYS = 6   # 참고문서 v1.3: 조회기간 최대 7일 → 여유 있게 6일 전 0시 ~ 현재
@@ -307,10 +308,10 @@ def keyword_score(bid, keywords):
 
 
 def ai_score_bids(bids, profile):
-    """공고 제목·기관을 AI가 읽고 연계도(0~10)와 이유를 붙임. 성공하면 True."""
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    if not token or not bids:
-        print("  [AI판정] GITHUB_TOKEN 없음 또는 대상 없음 → 키워드 방식 사용")
+    """공고 제목·기관을 AI가 읽고 연계도(0~10)와 이유를 붙임. 한 건이라도 성공하면 True."""
+    key = os.environ.get(AI_KEY_ENV, "").strip()
+    if not key or not bids:
+        print(f"  [AI판정] {AI_KEY_ENV} 없음 또는 대상 없음 → 키워드 방식 사용")
         return False
     desc = " ".join(profile["제품설명"]) or DEFAULT_PRODUCT_DESC
     interests = ", ".join(profile["검색키워드"] or G2B_KEYWORDS)
@@ -321,30 +322,26 @@ def ai_score_bids(bids, profile):
         "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"reason\":\"20자 내외 한국어 이유\"}]} 만 출력한다.\n"
         f"제품·사업: {desc}\n관심 키워드: {interests}"
     )
+    url = AI_ENDPOINT.format(model=AI_MODEL)
     ok = 0
     for i in range(0, len(bids), AI_CHUNK):
         chunk = bids[i:i + AI_CHUNK]
         items = [{"id": n, "title": b["title"], "org": b.get("org", "")} for n, b in enumerate(chunk)]
         payload = {
-            "model": AI_MODEL, "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
-            ],
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": json.dumps(items, ensure_ascii=False)}]}],
+            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
         }
         req = urllib.request.Request(
-            AI_ENDPOINT, data=json.dumps(payload).encode("utf-8"), method="POST",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                     "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+            url, data=json.dumps(payload).encode("utf-8"), method="POST",
+            headers={"x-goog-api-key": key, "Content-Type": "application/json"},
         )
         raw = ""
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read().decode("utf-8", "replace")
             data = json.loads(raw)
-            content = data["choices"][0]["message"]["content"]
-            # 모델이 ```json ... ``` 로 감싸거나 앞뒤에 설명을 붙여도 JSON 부분만 추출
+            content = data["candidates"][0]["content"]["parts"][0]["text"]
             m = re.search(r"\{.*\}", content, re.DOTALL)
             results = json.loads(m.group(0) if m else content)["results"]
             for r in results:
@@ -356,14 +353,14 @@ def ai_score_bids(bids, profile):
             body = ""
             if hasattr(e, "read"):
                 try:
-                    body = e.read().decode("utf-8", "replace")[:200]
+                    body = e.read().decode("utf-8", "replace")[:300]
                 except Exception:
                     pass
             print(f"  [AI판정 경고] {str(e)[:80]} {body}")
             if raw:
                 print(f"    [AI 원본 응답] {raw[:300]!r}")
-        time.sleep(1)
-    print(f"  [AI판정] {ok}/{len(bids)}건 판정")
+        time.sleep(2)
+    print(f"  [AI판정] {ok}/{len(bids)}건 판정 (모델: {AI_MODEL})")
     return ok > 0
 
 
