@@ -529,6 +529,7 @@ def is_expired(art, now_str):
 KST_TZ = datetime.timezone(datetime.timedelta(hours=9))
 # 탭·섹션 표시 순서 (왼쪽 → 오른쪽 / 위 → 아래)
 DISPLAY_ORDER = ["robotaxi", "autonomous_driving", "amr_logistics", "imaging_radar", GOV_KEY]
+MAX_ARCHIVE = 150    # '전체 기사 보기'에 담을 섹션별 최대 기사 수 (최근 30일, 최신순)
 BID_VISIBLE = 8     # 공식 공고 목록에서 처음부터 보여줄 개수
 
 
@@ -595,6 +596,24 @@ def bid_row_html(art, now, is_new=False):
   </div>
   <div class="bid-side">{dd}<a class="bid-btn" href="{url}" target="_blank" rel="noopener">공고 ↗</a></div>
 </li>"""
+
+
+def archive_html(arts, label="전체 기사 더 보기"):
+    """이미 위에 보여준 기사를 뺀 나머지를 가벼운 목록(제목·출처·날짜)으로 펼쳐 보기"""
+    arts = arts[:MAX_ARCHIVE]
+    if not arts:
+        return ""
+    rows = "".join(
+        f'<li class="arch"><a href="{esc(a["url"])}" target="_blank" rel="noopener">{esc(a["title"])}</a>'
+        f'<span class="arch-meta">{esc(" · ".join(filter(None, [a.get("source", ""), a.get("published", "")])))}</span></li>'
+        for a in arts
+    )
+    return f"""
+<details class="more archive">
+  <summary>{label} ({len(arts)}건) ▼</summary>
+  <ul class="archlist">{rows}</ul>
+  {collapse_btn()}
+</details>"""
 
 
 def collapse_btn():
@@ -682,6 +701,8 @@ def build_html(new_results, all_results, generated_at):
                 inner += cards_with_more(shown_news, new_urls)
             else:
                 inner += '<p class="empty">관련 뉴스가 없습니다.</p>\n'
+            shown_urls = {a["url"] for a in shown_news}
+            inner += archive_html([a for a in news if a["url"] not in shown_urls], "지난 관련 뉴스 전체 보기")
             count = len(bids) + len(news)
         else:
             recent_arts = [a for a in all_arts if a["url"] not in new_urls][:MAX_RECENT_ARTICLES]
@@ -692,11 +713,13 @@ def build_html(new_results, all_results, generated_at):
                 if recent_arts:
                     inner += '<p class="sub-label">📋 최근 기사</p>\n'
                     inner += cards_with_more(recent_arts, new_urls)
+            shown_urls = {a["url"] for a in (new_arts if new_arts else recent_arts)}
+            inner += archive_html([a for a in all_arts if a["url"] not in shown_urls], "지난 기사 전체 보기")
             count = len(all_arts)
 
         sections_html += f"""
 <details class="sec" id="sec-{topic_key}"{"" if topic_key == GOV_KEY else " open"}>
-  <summary class="topic-title"><span>{label}</span><span class="cnt">{count}건</span></summary>
+  <summary class="topic-title"><span>{label}</span><span class="cnt">신규 {len(new_arts)} · 전체 {count}건</span></summary>
   {inner}
 </details>"""
 
@@ -803,6 +826,13 @@ def build_html(new_results, all_results, generated_at):
   .bid-btn:hover {{ background:#4a7330; }}
   @media (min-width: 760px) {{ ul.bids {{ grid-template-columns: 1fr 1fr; }} }}
 
+  ul.archlist {{ list-style: none; margin: 0; padding: 0; background:#fffdf8; border:1px solid var(--line); border-radius:10px; }}
+  li.arch {{ display:flex; gap:10px; justify-content:space-between; align-items:baseline; padding:7px 14px; border-top:1px solid var(--line); }}
+  li.arch:first-child {{ border-top: 0; }}
+  li.arch a {{ font-size: var(--fs-body); color:#2f2b24; text-decoration:none; line-height: var(--lh-title); min-width:0; }}
+  li.arch a:hover {{ text-decoration: underline; color: var(--blue); }}
+  .arch-meta {{ flex: 0 0 auto; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }}
+  @media (max-width: 600px) {{ li.arch {{ flex-direction: column; gap: 0; }} }}
   details.more > summary, .more-collapse {{
     list-style: none; cursor: pointer; text-align: center; display:block; width:100%;
     background:#fffdf8; border:1px solid #d8cfb8; border-radius:10px; padding:10px;
