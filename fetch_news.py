@@ -72,7 +72,8 @@ AI_KEY_ENV   = "GEMINI_API_KEY"
 AI_MODEL     = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")   # 단종되면 아래에서 자동으로 최신 flash 모델을 찾음
 AI_ENDPOINT  = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 AI_MIN_SCORE = 5      # 0~10점 중 이 점수 이상만 표시
-AI_CHUNK     = 30     # 한 번에 판정할 공고 수
+AI_CHUNK     = 20     # 한 번에 판정할 공고 수
+AI_TIMEOUT   = 90     # 한 번 호출 최대 대기(초)
 G2B_DAYS = 6   # 참고문서 v1.3: 조회기간 최대 7일 → 여유 있게 6일 전 0시 ~ 현재
 
 
@@ -346,6 +347,7 @@ def ai_score_bids(bids, profile):
     )
     model = AI_MODEL
     retried = False
+    use_thinking_cfg = True
     ok = 0
     for i in range(0, len(bids), AI_CHUNK):
         chunk = bids[i:i + AI_CHUNK]
@@ -353,17 +355,21 @@ def ai_score_bids(bids, profile):
         payload = {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": json.dumps(items, ensure_ascii=False)}]}],
-            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+            "generationConfig": {
+                "temperature": 0, "responseMimeType": "application/json",
+            },
         }
+        if use_thinking_cfg:
+            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}   # 긴 '생각' 단계를 꺼서 응답 속도 향상
         raw = ""
         try:
-            for attempt in range(2):
+            for attempt in range(3):
                 req = urllib.request.Request(
                     AI_ENDPOINT.format(model=model), data=json.dumps(payload).encode("utf-8"), method="POST",
                     headers={"x-goog-api-key": key, "Content-Type": "application/json"},
                 )
                 try:
-                    with urllib.request.urlopen(req, timeout=60) as resp:
+                    with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as resp:
                         raw = resp.read().decode("utf-8", "replace")
                     break
                 except urllib.error.HTTPError as he:
@@ -374,6 +380,11 @@ def ai_score_bids(bids, profile):
                             print(f"  [AI판정] 모델 {model} 사용 불가 → {new_model} 로 변경")
                             model = new_model
                             continue
+                    if he.code == 400 and "thinkingConfig" in payload["generationConfig"]:
+                        payload["generationConfig"].pop("thinkingConfig")   # 이 모델이 옵션을 거부하면 빼고 재시도
+                        use_thinking_cfg = False
+                        print("  [AI판정] thinkingConfig 거부됨 → 옵션 없이 재시도")
+                        continue
                     raise
             data = json.loads(raw)
             content = data["candidates"][0]["content"]["parts"][0]["text"]
@@ -744,7 +755,7 @@ def main():
         if uid not in seen:
             new_seen[uid] = today
             gov_new.append(a)
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
     gov_all = [a for a in gov_all if not is_expired(a, now_str)]   # 마감 지난 공고 제외
     gov_new = [a for a in gov_new if not is_expired(a, now_str)]
     gov_all.sort(key=gov_sort_key)
@@ -753,7 +764,8 @@ def main():
     new_results[GOV_KEY] = gov_new[:MAX_NEW_ARTICLES * 2]
     print(f"  → 신규 {len(new_results[GOV_KEY])}건 / 전체 {len(gov_all)}건")
 
-    generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M KST")
+    KST = datetime.timezone(datetime.timedelta(hours=9))
+    generated_at = datetime.datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
     build_html(new_results, all_results, generated_at)
     save_seen(new_seen)
     print("\n완료: docs/index.html 생성됨")
