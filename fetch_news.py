@@ -269,11 +269,13 @@ def clean_description(desc, title, source):
 
 
 def parse_pubdate(pubdate_str):
+    """RSS 발행 시각을 한국시간(KST) 기준 날짜(YYYY-MM-DD)로 변환"""
     try:
-        from email.utils import parsedate
-        t = parsedate(pubdate_str)
-        if t:
-            return f"{t[0]:04d}-{t[1]:02d}-{t[2]:02d}"
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(pubdate_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d")
     except Exception:
         pass
     return pubdate_str[:10] if pubdate_str else ""
@@ -712,7 +714,10 @@ def build_html(new_results, all_results, generated_at):
     now = datetime.datetime.now(KST_TZ).replace(tzinfo=None)
 
     # ── 상단 요약 수치 ──
-    total_new = sum(len(v) for k, v in new_results.items() if k != GOV_KEY)
+    today = now.strftime("%Y-%m-%d")
+    today_urls = {a["url"] for k, v in all_results.items() if k != GOV_KEY
+                  for a in v if a.get("published") == today}
+    total_new = len(today_urls)
     gov_all = all_results.get(GOV_KEY, [])
     officials = [a for a in gov_all if a.get("official")]
     urgent = sum(1 for a in officials if (dday_days(a.get("deadline", ""), now) is not None
@@ -720,7 +725,7 @@ def build_html(new_results, all_results, generated_at):
     high = sum(1 for a in officials if a.get("ai_score", 0) >= 8)
     summary_bar = f"""
 <div class="summary-bar">
-  <div class="sum"><b>{total_new}</b><span>오늘 신규 뉴스</span></div>
+  <div class="sum"><b>{total_new}</b><span>오늘 기사</span></div>
   <a class="sum" href="#sec-{GOV_KEY}"><b>{len(officials)}</b><span>공식 공고</span></a>
   <a class="sum {'hot' if urgent else ''}" href="#sec-{GOV_KEY}"><b>{urgent}</b><span>마감 임박</span></a>
   <a class="sum {'hot' if high else ''}" href="#sec-{GOV_KEY}"><b>{high}</b><span>연계 높음</span></a>
@@ -745,37 +750,40 @@ def build_html(new_results, all_results, generated_at):
         if topic_key == GOV_KEY:
             bids = [a for a in all_arts if a.get("official")]
             news = [a for a in all_arts if not a.get("official")]
-            news_new = [a for a in news if a["url"] in new_urls]
+            today_bids = sum(1 for a in bids if a.get("published") == today)
             if bids:
-                inner += '<p class="sub-label">📄 나라장터 공식 공고 <small>(연계도 높은 순 · 마감 임박 순)</small></p>\n'
+                extra = f" · 오늘 게시 {today_bids}건" if today_bids else ""
+                inner += f'<p class="sub-label">📄 나라장터 공식 공고 <small>(연계도 높은 순 · 마감 임박 순{extra})</small></p>\n'
                 inner += bids_with_more(bids, new_urls, now)
             else:
                 inner += '<p class="empty">연계 가능한 공식 공고가 아직 없습니다.</p>\n'
-            inner += '<p class="sub-label">📰 관련 뉴스</p>\n'
-            shown_news = news_new if news_new else news[:MAX_RECENT_ARTICLES]
-            if shown_news:
-                inner += cards_with_more(shown_news, new_urls)
-            else:
-                inner += '<p class="empty">관련 뉴스가 없습니다.</p>\n'
-            shown_urls = {a["url"] for a in shown_news}
-            inner += archive_html([a for a in news if a["url"] not in shown_urls], "지난 관련 뉴스 전체 보기")
-            count = len(bids) + len(news)
+            items, label_news, today_n = news, "📰 관련 뉴스", 0
         else:
-            recent_arts = [a for a in all_arts if a["url"] not in new_urls][:MAX_RECENT_ARTICLES]
-            if new_arts:
-                inner += cards_with_more(new_arts, new_urls)
-            else:
-                inner += '<p class="empty">오늘은 새로운 기사가 없습니다.</p>\n'
-                if recent_arts:
-                    inner += '<p class="sub-label">📋 최근 기사</p>\n'
-                    inner += cards_with_more(recent_arts, new_urls)
-            shown_urls = {a["url"] for a in (new_arts if new_arts else recent_arts)}
-            inner += archive_html([a for a in all_arts if a["url"] not in shown_urls], "지난 기사 전체 보기")
-            count = len(all_arts)
+            items, label_news, today_n = all_arts, None, 0
+
+        by_date = sorted(items, key=lambda a: a.get("published", ""), reverse=True)
+        today_items = [a for a in by_date if a.get("published") == today]
+        today_n = len(today_items)
+        if label_news:
+            inner += f'<p class="sub-label">{label_news}</p>\n'
+        if today_items:
+            inner += f'<p class="sub-label today">📅 오늘 기사 <small>({today_n}건)</small></p>\n'
+            inner += cards_with_more(today_items, new_urls)
+            shown = today_items
+        else:
+            inner += '<p class="empty">오늘 기사가 아직 없습니다.</p>\n'
+            shown = by_date[:MAX_RECENT_ARTICLES]
+            if shown:
+                inner += '<p class="sub-label">📋 최근 기사</p>\n'
+                inner += cards_with_more(shown, new_urls)
+        shown_urls = {a["url"] for a in shown}
+        inner += archive_html([a for a in by_date if a["url"] not in shown_urls],
+                              "지난 관련 뉴스 전체 보기" if label_news else "지난 기사 전체 보기")
+        count = len(items) + (len([a for a in all_arts if a.get("official")]) if label_news else 0)
 
         sections_html += f"""
 <details class="sec" id="sec-{topic_key}"{"" if topic_key == GOV_KEY else " open"}>
-  <summary class="topic-title"><span>{label}</span><span class="cnt">신규 {len(new_arts)} · 전체 {count}건</span></summary>
+  <summary class="topic-title"><span>{label}</span><span class="cnt">오늘 {today_n} · 전체 {count}건</span></summary>
   {inner}
 </details>"""
 
@@ -838,6 +846,7 @@ def build_html(new_results, all_results, generated_at):
   .topic-title span:first-child {{ flex: 1; }}
   .cnt {{ font-size: 12px; font-weight: 600; color: var(--muted); }}
   .sub-label {{ font-size: 13px; color: #5c5546; font-weight: 700; margin: 12px 0 8px 2px; }}
+  .sub-label.today {{ color: var(--blue); font-size: 14px; }}
   .sub-label small {{ font-weight: 400; color: var(--muted); }}
   .empty {{ color: #9a927f; font-size: 14px; margin: 4px 2px 8px; }}
 
