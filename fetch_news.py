@@ -511,7 +511,7 @@ def ai_score_bids(bids, profile, kind="bid"):
             "너는 레이더 센서 회사의 사업개발 담당을 돕는 뉴스 선별기다. "
             "각 항목은 뉴스 제목(org는 언론사)이다. 정부 R&D 과제·실증사업·지원사업의 공모·선정·참여·착수 소식이면서 "
             "아래 제품·사업과 연계(파트너·경쟁사 동향, 후속 과제 단서 포함)될 가능성을 0~10점으로 평가한다. "
-            "과제·사업과 무관한 일반 기사, 교육·행사·홍보성 기사, 농업·축산·바이오 등 센서/자율주행과 무관한 분야의 사업은 0~3점. "
+            "과제·사업과 무관한 일반 기사, 교육·행사·홍보성 기사, "
             "조선소·항만·물류·로봇 등 현장 자율주행·센서 과제와 그 참여 기업 소식은 가산(6점 이상). "
             "type은 '공모중', '선정·참여', '정책·계획', '기타' 중 하나. "
             "query는 해당 과제·사업의 원래 공고를 검색할 한국어 검색어(회사명·언론 표현 제외, 과제/사업의 핵심어 2~4개 + '공고'). "
@@ -1077,6 +1077,40 @@ def build_html(new_results, all_results, generated_at):
     (DOCS_DIR / "index.html").write_text(page, encoding="utf-8")
 
 
+STORE_FILE = Path("data/articles_store.json")
+
+
+def merge_store(all_results, ex_words, keep_days=30):
+    """지난 실행에서 보여준 기사를 data/articles_store.json에 보관해, 구글뉴스 검색 결과에서 빠지거나
+    AI 판정이 흔들려도 30일간은 목록에 남긴다. 공식 입찰(official)은 매번 새로 조회하므로 저장하지 않는다."""
+    cutoff = (datetime.date.today() - datetime.timedelta(days=keep_days)).isoformat()
+    try:
+        store = json.loads(STORE_FILE.read_text(encoding="utf-8")) if STORE_FILE.exists() else {}
+    except Exception:
+        store = {}
+    added = 0
+    for key, arts in all_results.items():
+        have = {a["url"] for a in arts}
+        for a in store.get(key, []):
+            if a.get("url") in have or (a.get("published") or "") < cutoff:
+                continue
+            if key == GOV_KEY and any(w in a.get("title", "") for w in ex_words):
+                continue
+            arts.append(a)
+            added += 1
+        if key != GOV_KEY:
+            arts.sort(key=lambda a: a.get("published") or "", reverse=True)
+    if added:
+        print(f"  [보관기사] 이전 실행 기사 {added}건 복원")
+    out = {k: [a for a in v if not a.get("official") and (a.get("published") or "") >= cutoff]
+           for k, v in all_results.items()}
+    try:
+        STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STORE_FILE.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        print(f"  [보관기사 경고] 저장 실패: {str(e)[:60]}")
+
+
 def main():
     seen        = load_seen()
     new_seen    = dict(seen)
@@ -1208,6 +1242,9 @@ def main():
     new_results[GOV_KEY] = gov_new[:MAX_NEW_ARTICLES * 2]
     print(f"  → 신규 {len(new_results[GOV_KEY])}건 / 전체 {len(gov_all)}건")
 
+    merge_store(all_results, [w for w in prof["제외키워드"] if w])
+    gov_all = all_results[GOV_KEY]
+    gov_all.sort(key=gov_sort_key)
     KST = datetime.timezone(datetime.timedelta(hours=9))
     generated_at = datetime.datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
     build_html(new_results, all_results, generated_at)
