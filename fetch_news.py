@@ -712,6 +712,7 @@ def is_expired(art, now_str):
 KST_TZ = datetime.timezone(datetime.timedelta(hours=9))
 # 탭·섹션 표시 순서 (왼쪽 → 오른쪽 / 위 → 아래)
 DISPLAY_ORDER = ["robotaxi", "robotaxi_companies", "autonomous_driving", "amr_logistics", "imaging_radar", GOV_KEY]
+ARCHIVE_FIND_MIN = 6   # 지난 기사 목록에서 '공고 확인' 링크를 붙일 최소 AI 점수
 MAX_ARCHIVE = 150    # '전체 기사 보기'에 담을 섹션별 최대 기사 수 (최근 30일, 최신순)
 BID_VISIBLE = 8     # 공식 공고 목록에서 처음부터 보여줄 개수
 
@@ -794,8 +795,16 @@ def archive_html(arts, label="전체 기사 더 보기"):
     arts = arts[:MAX_ARCHIVE]
     if not arts:
         return ""
+    def find_link(a):
+        # 과제 뉴스 중 AI 연계 점수가 높은 지난 기사에도 '공고 확인' 링크를 붙임
+        if a.get("gov") and not a.get("official") and (a.get("ai_score") or 0) >= ARCHIVE_FIND_MIN:
+            u_sites, _ = find_notice_urls(a)
+            return (f'<a class="arch-find" href="{esc(u_sites)}" target="_blank" rel="noopener" '
+                    f'title="AI {a["ai_score"]}/10">🔎 공고 확인</a>')
+        return ""
     rows = "".join(
         f'<li class="arch"><a href="{esc(a["url"])}" target="_blank" rel="noopener">{esc(a["title"])}</a>'
+        f'{find_link(a)}'
         f'<span class="arch-meta">{esc(" · ".join(filter(None, [a.get("source", ""), a.get("published", "")])))}</span></li>'
         for a in arts
     )
@@ -1036,6 +1045,9 @@ def build_html(new_results, all_results, generated_at):
   li.arch:first-child {{ border-top: 0; }}
   li.arch a {{ font-size: var(--fs-body); color:#2f2b24; text-decoration:none; line-height: var(--lh-title); min-width:0; }}
   li.arch a:hover {{ text-decoration: underline; color: var(--blue); }}
+  li.arch a:first-child {{ flex: 1 1 auto; }}
+  li.arch a.arch-find {{ flex: 0 0 auto; font-size: var(--fs-meta); font-weight: 700; color: var(--blue); border:1px solid var(--line); border-radius:8px; padding:1px 8px; background:#fbf6e8; white-space:nowrap; }}
+  li.arch a.arch-find:hover {{ background:#f3ecd6; text-decoration:none; }}
   .arch-meta {{ flex: 0 0 auto; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }}
   @media (max-width: 600px) {{ li.arch {{ flex-direction: column; gap: 0; }} }}
   details.more > summary, .more-collapse {{
