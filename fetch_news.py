@@ -732,6 +732,57 @@ def dday_days(deadline, now):
     return (dt.date() - now.date()).days
 
 
+def _title_tokens(title):
+    t = re.sub(r"(\d+(?:\.\d+)?억)원", r"\1", title)
+    t = re.sub(r"[^0-9A-Za-z가-힣]+", " ", t)
+    return [w for w in t.split() if len(w) >= 2]
+
+
+GENERIC_TOKENS = {
+    "자율주행", "자율주행차", "자율주행차량", "로보택시", "로봇택시", "자율주행택시", "정부", "국책", "국가", "과제", "사업", "실증",
+    "기술", "개발", "참여", "선정", "추진", "확대", "도입", "구축", "공모", "지원", "연구", "플랫폼", "스타트업", "투자",
+    "레이더", "라이다", "센서", "로봇", "물류", "AMR", "AI", "국토교통부", "산업통상부", "과학기술정보통신부", "해양수산부",
+    "한국", "서울", "부산", "대전", "대구", "인천", "경기", "제주", "전남", "경남", "경북", "충남", "충북", "전북", "강원",
+}
+
+
+def _same_story(a, b):
+    """다른 언론사가 같은 사건을 쓴 기사인지 추정. 흔한 단어를 뺀 고유 단어(기업·기관·사업명·금액 등)를
+    2개 이상 공유(그중 3글자 이상 1개 포함)하거나 전체 단어 유사도가 높으면 같은 소식. 발행일 3일 이내만 비교."""
+    ta, tb = _title_tokens(a["title"]), _title_tokens(b["title"])
+    if not ta or not tb:
+        return False
+    try:
+        da = datetime.date.fromisoformat(a.get("published") or "")
+        db = datetime.date.fromisoformat(b.get("published") or "")
+        if abs((da - db).days) > 3:
+            return False
+    except ValueError:
+        pass
+    sa, sb = set(ta), set(tb)
+    if len(sa & sb) / len(sa | sb) >= 0.5:
+        return True
+    shared = {w for w in sa & sb if w not in GENERIC_TOKENS}
+    return len(shared) >= 2 and any(len(w) >= 3 for w in shared)
+
+
+def group_same_story(arts):
+    """같은 소식 기사는 대표 1건만 남기고 나머지는 대표의 dups에 링크로 보관. 대표 = AI 점수 높은 순 → 최신 순."""
+    order = sorted(arts, key=lambda a: (a.get("ai_score") or 0, a.get("published") or ""), reverse=True)
+    reps = []
+    for a in order:
+        a["dups"] = []
+        for r in reps:
+            if _same_story(r, a):
+                r["dups"].append({"title": a["title"], "url": a["url"], "source": a.get("source", ""),
+                                  "published": a.get("published", "")})
+                break
+        else:
+            reps.append(a)
+    keep = {id(r) for r in reps}
+    return [a for a in arts if id(a) in keep]
+
+
 def card_html(art, is_new=False):
     """일반 뉴스 카드 (제목 자체가 링크, 요약은 2줄까지만)"""
     title   = esc(art["title"])
@@ -743,6 +794,12 @@ def card_html(art, is_new=False):
     gov_badge = '<span class="badge">🏛 과제·입찰</span>' if art.get("gov") else ""
     meta = " · ".join(filter(None, [source, pub]))
     summary_html = f'<p class="card-summary">{summary}</p>' if summary else ""
+    if art.get("dups"):
+        links = "".join(
+            f'<li><a href="{esc(d["url"])}" target="_blank" rel="noopener">{esc(d["title"])}</a>'
+            f'<span> · {esc(d.get("source", ""))}</span></li>' for d in art["dups"])
+        summary_html += (f'<details class="dups"><summary>같은 소식 {len(art["dups"])}건 더 보기</summary>'
+                         f'<ul>{links}</ul></details>')
     if art.get("ai_type") is not None and art.get("ai_score") is not None:
         lvl = "high" if art["ai_score"] >= 8 else "mid"
         summary_html += (f'<div class="bid-ai {lvl}">🎯 {esc(art.get("ai_type", ""))} · '
@@ -804,6 +861,7 @@ def archive_html(arts, label="전체 기사 더 보기"):
         return ""
     rows = "".join(
         f'<li class="arch"><a href="{esc(a["url"])}" target="_blank" rel="noopener">{esc(a["title"])}</a>'
+        f'{("<span class=arch-meta>+" + str(len(a["dups"])) + "건 같은 소식</span>") if a.get("dups") else ""}'
         f'{find_link(a)}'
         f'<span class="arch-meta">{esc(" · ".join(filter(None, [a.get("source", ""), a.get("published", "")])))}</span></li>'
         for a in arts
@@ -1048,6 +1106,11 @@ def build_html(new_results, all_results, generated_at):
   li.arch a:first-child {{ flex: 1 1 auto; }}
   li.arch a.arch-find {{ flex: 0 0 auto; font-size: var(--fs-meta); font-weight: 700; color: var(--blue); border:1px solid var(--line); border-radius:8px; padding:1px 8px; background:#fbf6e8; white-space:nowrap; }}
   li.arch a.arch-find:hover {{ background:#f3ecd6; text-decoration:none; }}
+  details.dups {{ margin-top:6px; font-size: var(--fs-meta); color: var(--muted); }}
+  details.dups summary {{ cursor:pointer; color: var(--blue); }}
+  details.dups ul {{ margin:4px 0 0; padding-left:18px; }}
+  details.dups a {{ color:#2f2b24; text-decoration:none; }}
+  details.dups a:hover {{ text-decoration:underline; }}
   .arch-meta {{ flex: 0 0 auto; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }}
   @media (max-width: 600px) {{ li.arch {{ flex-direction: column; gap: 0; }} }}
   details.more > summary, .more-collapse {{
@@ -1255,8 +1318,16 @@ def main():
     print(f"  → 신규 {len(new_results[GOV_KEY])}건 / 전체 {len(gov_all)}건")
 
     merge_store(all_results, [w for w in prof["제외키워드"] if w])
+    for k in list(all_results):
+        new_u = {a["url"] for a in new_results.get(k, [])}
+        grouped = group_same_story([a for a in all_results[k] if not a.get("official")])
+        grouped_urls = {a["url"] for a in grouped}
+        all_results[k] = [a for a in all_results[k] if a.get("official") or a["url"] in grouped_urls]
+        new_results[k] = [a for a in all_results[k]
+                          if a["url"] in new_u or any(d["url"] in new_u for d in a.get("dups", []))]
     gov_all = all_results[GOV_KEY]
     gov_all.sort(key=gov_sort_key)
+    new_results[GOV_KEY].sort(key=gov_sort_key)
     KST = datetime.timezone(datetime.timedelta(hours=9))
     generated_at = datetime.datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
     build_html(new_results, all_results, generated_at)
