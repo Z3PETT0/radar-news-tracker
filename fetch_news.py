@@ -99,13 +99,21 @@ GOV_SEARCH_SITES = [
 
 
 def find_notice_urls(art):
-    """과제 기사에서 '지난 공고'를 찾는 구글 검색 링크 2개 (공고 사이트 한정 / 전체 웹)"""
-    q = (art.get("ai_query") or "").strip()
-    if not q:
-        q = re.sub(r"\s+", " ", re.sub(r"[\"'“”‘’\[\]「」『』…·,]", " ", art.get("title", ""))).strip()[:60] + " 공고"
+    """과제 기사에서 '지난 공고'를 찾는 구글 검색 링크 2개 (공고 사이트 한정 / 전체 웹).
+    본문에서 과제명·부처가 추출됐으면 정확 일치(따옴표) 검색, 아니면 AI 검색어/제목 사용."""
+    proj = (art.get("ai_project") or "").strip()
+    agency = (art.get("ai_agency") or "").strip()
+    if proj:
+        q = f'"{proj}" 공고'
+        q_web = f'"{proj}" {agency} 공고 OR 공모 OR 과제'.strip()
+    else:
+        q = (art.get("ai_query") or "").strip()
+        if not q:
+            q = re.sub(r"\s+", " ", re.sub(r"[\"'“”‘’\[\]「」『』…·,]", " ", art.get("title", ""))).strip()[:60] + " 공고"
+        q_web = q
     sites = " OR ".join(f"site:{d}" for d in GOV_SEARCH_SITES)
     base = "https://www.google.com/search?q="
-    return (base + urllib.parse.quote(f"{q} ({sites})"), base + urllib.parse.quote(q))
+    return (base + urllib.parse.quote(f"{q} ({sites})"), base + urllib.parse.quote(q_web))
 
 
 def gnews(query, lang="en", country="US"):
@@ -159,6 +167,17 @@ TOPICS = {
             gnews('"자율주행" 항만 OR 물류 OR 스마트팩토리 -영화', lang="ko", country="KR"),
             gnews('"autonomous mobile robot" AMR warehouse'),
             gnews('"autonomous" port OR terminal automation logistics'),
+        ],
+    },
+    "robotaxi_companies": {
+        "label": "로보택시 업체 동향 (Robotaxi Companies)",
+        "feeds": [
+            gnews('Waymo OR Zoox OR "May Mobility" OR Motional OR Nuro robotaxi'),
+            gnews('"Pony.ai" OR WeRide OR "Apollo Go" OR Baidu robotaxi'),
+            gnews('Tesla Cybercab OR "Tesla robotaxi" OR Wayve OR Mobileye robotaxi'),
+            gnews('Uber OR Lyft autonomous partnership robotaxi'),
+            gnews('"로보택시" 웨이모 OR 포니AI OR 위라이드 OR 바이두 OR 테슬라', lang="ko", country="KR"),
+            gnews('"자율주행 택시" 서울 OR 카카오모빌리티 OR 42dot OR 오토노머스에이투지 OR 라이드플럭스', lang="ko", country="KR"),
         ],
     },
     "robotaxi": {
@@ -361,6 +380,119 @@ def list_gemini_models(key):
             cands.append((0 if mm.group(2) else 1, -float(mm.group(1)), name))
     cands.sort()
     return [c[2] for c in cands]
+
+
+def resolve_gnews_url(url, timeout=12):
+    """구글뉴스 RSS 링크 → 실제 기사 URL. 실패하면 None (구글 쪽 방식 변경 가능성 있음)."""
+    if "news.google.com" not in url:
+        return url
+    try:
+        m = re.search(r"/articles/([^?/]+)", url)
+        if not m:
+            return None
+        aid = m.group(1)
+        # 구형 링크: base64 안에 URL이 그대로 들어 있음
+        try:
+            import base64
+            raw = base64.urlsafe_b64decode(aid + "=" * (-len(aid) % 4))
+            mm = re.search(rb"https?://[\x21-\x7e]+", raw)
+            if mm and b"news.google" not in mm.group(0):
+                return mm.group(0).decode()
+        except Exception:
+            pass
+        req = urllib.request.Request(f"https://news.google.com/articles/{aid}", headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            html_ = r.read().decode("utf-8", "replace")
+        sg = re.search(r'data-n-a-sg="([^"]+)"', html_)
+        ts = re.search(r'data-n-a-ts="([^"]+)"', html_)
+        if not (sg and ts):
+            return None
+        inner = ('["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],'
+                 f'"X","X",1,[1,1,1],1,1,null,0,0,null,0],"{aid}",{ts.group(1)},"{sg.group(1)}"]')
+        freq = json.dumps([[["Fbv4je", inner, None, "generic"]]])
+        data = urllib.parse.urlencode({"f.req": freq}).encode()
+        req = urllib.request.Request(
+            "https://news.google.com/_/DotsSplashUi/data/batchexecute", data=data, method="POST",
+            headers={**HEADERS, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read().decode("utf-8", "replace")
+        part = body.split("\n\n", 1)[1]
+        return json.loads(json.loads(part)[0][2])[1]
+    except Exception:
+        return None
+
+
+def fetch_article_text(url, limit=2500, timeout=12):
+    """기사 URL의 본문 텍스트(앞부분)를 가져옴. 실패하면 ''."""
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read(1_500_000)
+            enc = r.headers.get_content_charset() or "utf-8"
+        html_ = raw.decode(enc, "replace")
+        html_ = re.sub(r"(?is)<(script|style|nav|header|footer|aside)[^>]*>.*?</\1>", " ", html_)
+        paras = re.findall(r"(?is)<p[^>]*>(.*?)</p>", html_)
+        text = " ".join(re.sub(r"(?s)<[^>]+>", " ", p) for p in paras)
+        text = re.sub(r"\s+", " ", html_mod.unescape(text)).strip()
+        return text[:limit]
+    except Exception:
+        return ""
+
+
+def enrich_gov_news(items, key, max_items=25):
+    """과제 뉴스의 본문을 읽고 AI가 과제명·주관부처·전담기관을 추출 → 공고 검색 정확도 향상.
+    어느 단계든 실패하면 해당 기사는 기존 방식(제목 기반 검색어)을 그대로 씀."""
+    if not key:
+        return
+    targets = [a for a in items if not a.get("official")][:max_items]
+    docs = []
+    for a in targets:
+        real = resolve_gnews_url(a["url"])
+        body = fetch_article_text(real) if real else ""
+        if len(body) >= 200:
+            docs.append((a, body))
+    print(f"  [본문읽기] {len(docs)}/{len(targets)}건 본문 확보")
+    if not docs:
+        return
+    system = (
+        "아래 각 기사 본문에서 언급된 정부 R&D 과제·실증사업·지원사업의 정보를 추출한다. "
+        "project는 기사에 나온 과제/사업의 정식 명칭(따옴표 안의 명칭 우선, 없으면 빈 문자열), "
+        "agency는 주관 부처·기관, 없으면 빈 문자열. 기사에 없는 내용은 절대 추측하지 말 것. "
+        "반드시 JSON {\"results\":[{\"id\":번호,\"project\":\"\",\"agency\":\"\"}]} 만 출력한다."
+    )
+    models = [AI_MODEL]
+    tried_list = False
+    for i in range(0, len(docs), 8):
+        chunk = docs[i:i + 8]
+        payload_items = [{"id": n, "title": a["title"], "body": b} for n, (a, b) in enumerate(chunk)]
+        while models:
+            model = models[0]
+            payload = {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": json.dumps(payload_items, ensure_ascii=False)}]}],
+                "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+            }
+            req = urllib.request.Request(
+                AI_ENDPOINT.format(model=model), data=json.dumps(payload).encode("utf-8"), method="POST",
+                headers={"x-goog-api-key": key, "Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as resp:
+                    data = json.loads(resp.read().decode("utf-8", "replace"))
+                content = data["candidates"][0]["content"]["parts"][0]["text"]
+                m = re.search(r"\{.*\}", content, re.DOTALL)
+                for r in json.loads(m.group(0) if m else content)["results"]:
+                    a = chunk[int(r["id"])][0]
+                    a["ai_project"] = str(r.get("project", "")).strip()[:80]
+                    a["ai_agency"] = str(r.get("agency", "")).strip()[:40]
+                break
+            except Exception as e:
+                print(f"  [본문읽기 경고] {model}: {str(e)[:80]}")
+                models.pop(0)
+                if not models and not tried_list:
+                    tried_list = True
+                    models = [m for m in list_gemini_models(key) if m != model][:3]
+    n = sum(1 for a, _ in docs if a.get("ai_project"))
+    print(f"  [본문읽기] 과제명 추출 {n}건")
 
 
 def ai_score_bids(bids, profile, kind="bid"):
@@ -578,7 +710,7 @@ def is_expired(art, now_str):
 
 KST_TZ = datetime.timezone(datetime.timedelta(hours=9))
 # 탭·섹션 표시 순서 (왼쪽 → 오른쪽 / 위 → 아래)
-DISPLAY_ORDER = ["robotaxi", "autonomous_driving", "amr_logistics", "imaging_radar", GOV_KEY]
+DISPLAY_ORDER = ["robotaxi", "robotaxi_companies", "autonomous_driving", "amr_logistics", "imaging_radar", GOV_KEY]
 MAX_ARCHIVE = 150    # '전체 기사 보기'에 담을 섹션별 최대 기사 수 (최근 30일, 최신순)
 BID_VISIBLE = 8     # 공식 공고 목록에서 처음부터 보여줄 개수
 
@@ -1055,6 +1187,7 @@ def main():
                 print(f"    [과제뉴스 제외] {a['title'][:40]} ({a['ai_score']}점, {a.get('ai_reason','')})")
         gov_all = [a for a in gov_all if a["url"] not in drop]
         gov_new = [a for a in gov_new if a["url"] not in drop]
+    enrich_gov_news(gov_all, os.environ.get(AI_KEY_ENV, "").strip())
     now_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
     gov_all = [a for a in gov_all if not is_expired(a, now_str)]   # 마감 지난 공고 제외
     gov_new = [a for a in gov_new if not is_expired(a, now_str)]
