@@ -511,7 +511,8 @@ def ai_score_bids(bids, profile, kind="bid"):
             "너는 레이더 센서 회사의 사업개발 담당을 돕는 뉴스 선별기다. "
             "각 항목은 뉴스 제목(org는 언론사)이다. 정부 R&D 과제·실증사업·지원사업의 공모·선정·참여·착수 소식이면서 "
             "아래 제품·사업과 연계(파트너·경쟁사 동향, 후속 과제 단서 포함)될 가능성을 0~10점으로 평가한다. "
-            "과제·사업과 무관한 일반 기사, 교육·행사·홍보성 기사는 0~3점. "
+            "과제·사업과 무관한 일반 기사, 교육·행사·홍보성 기사, 농업·축산·바이오 등 센서/자율주행과 무관한 분야의 사업은 0~3점. "
+            "조선소·항만·물류·로봇 등 현장 자율주행·센서 과제와 그 참여 기업 소식은 가산(6점 이상). "
             "type은 '공모중', '선정·참여', '정책·계획', '기타' 중 하나. "
             "query는 해당 과제·사업의 원래 공고를 검색할 한국어 검색어(회사명·언론 표현 제외, 과제/사업의 핵심어 2~4개 + '공고'). "
             "반드시 JSON {\"results\":[{\"id\":번호,\"score\":정수,\"type\":\"유형\",\"reason\":\"20자 내외 한국어 이유\",\"query\":\"검색어\"}]} 만 출력한다.\n"
@@ -1178,6 +1179,16 @@ def main():
             new_seen[uid] = today
             gov_new.append(a)
     # 과제 관련 뉴스도 제목을 AI가 읽고 연계도·유형(공모중/선정·참여/…)을 붙여 관련 없는 기사는 제외
+    # 프로필 [제외키워드]가 제목에 있는 과제 뉴스는 AI에 보내기 전에 제외
+    ex_words = [w for w in prof["제외키워드"] if w]
+    if ex_words:
+        def _hit(a):
+            return (not a.get("official")) and any(w in a["title"] for w in ex_words)
+        for a in gov_all:
+            if _hit(a):
+                print(f"    [과제뉴스 제외어] {a['title'][:40]}")
+        gov_all = [a for a in gov_all if not _hit(a)]
+        gov_new = [a for a in gov_new if not _hit(a)]
     news_items = [a for a in gov_all if not a.get("official")]
     if news_items and ai_score_bids(news_items, prof, kind="news"):
         drop = {a["url"] for a in news_items
