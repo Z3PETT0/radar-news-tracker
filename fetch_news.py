@@ -1088,15 +1088,19 @@ def build_html(new_results, all_results, generated_at):
   mark.shl {{ background:#ffe08a; color:inherit; padding:0 1px; border-radius:3px; }}
   article.card, li.arch, li.bid {{ scroll-margin-top: 130px; }}
 
-  /* 오른쪽 고정 이동 버튼 */
-  .jump {{ position:fixed; right:16px; bottom:24px; z-index:20; display:flex; flex-direction:column; gap:8px; }}
-  .jump button {{
-    width:46px; height:46px; border-radius:50%; border:2px solid #1e4a99; background:#fffdf8; color:#1e4a99;
-    font:inherit; font-size:11px; font-weight:800; letter-spacing:.02em; cursor:pointer;
-    box-shadow:0 2px 8px #0000001f; transition: background .15s, color .15s, transform .15s;
+  /* 오른쪽 고정 이동 버튼: 위·아래 화살표가 하나로 묶인 둥근 직사각형 */
+  .jump {{
+    position:fixed; right:16px; bottom:24px; z-index:20; display:flex; flex-direction:column; overflow:hidden;
+    width:44px; background:#fffdf8; border:2px solid #1e4a99; border-radius:16px; box-shadow:0 2px 8px #0000001f;
   }}
-  .jump button:hover {{ background:#1e4a99; color:#fff; transform:translateY(-1px); }}
-  @media (max-width: 600px) {{ .jump {{ right:10px; bottom:16px; }} .jump button {{ width:42px; height:42px; }} }}
+  .jump button {{
+    width:100%; height:42px; border:0; background:none; color:#1e4a99; font:inherit; font-size:15px; line-height:1;
+    cursor:pointer; transition: background .15s;
+  }}
+  .jump button + button {{ border-top:1px solid #1e4a9944; }}
+  @media (hover:hover) {{ .jump button:hover {{ background:#e8eefb; }} }}
+  .jump button:active {{ background:#d5e0f6; }}
+  @media (max-width: 600px) {{ .jump {{ right:10px; bottom:16px; width:40px; border-radius:14px; }} .jump button {{ height:38px; }} }}
 
   details.sec {{ scroll-margin-top: 56px; margin-top: 14px; }}
   .topic-title {{
@@ -1208,8 +1212,8 @@ def build_html(new_results, all_results, generated_at):
 </div>
 {sections_html}
 <div class="jump" aria-label="페이지 이동">
-  <button type="button" id="jup" aria-label="맨 위로">UP</button>
-  <button type="button" id="jdown" aria-label="맨 아래로">DOWN</button>
+  <button type="button" id="jup" aria-label="맨 위로">▲</button>
+  <button type="button" id="jdown" aria-label="맨 아래로">▼</button>
 </div>
 <script>
 (function () {{
