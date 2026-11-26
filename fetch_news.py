@@ -911,14 +911,38 @@ def bids_with_more(bids, new_urls, now):
 
 
 SEARCH_SYNONYMS = [
-    ["웨이모", "Waymo"], ["테슬라", "Tesla"], ["쏘카", "SOCAR"], ["카카오모빌리티", "Kakao Mobility"],
-    ["포니AI", "Pony.ai", "Pony AI"], ["위라이드", "WeRide"], ["바이두", "Baidu"], ["아폴로고", "Apollo Go"],
-    ["죽스", "Zoox"], ["누로", "Nuro"], ["모셔널", "Motional"], ["우버", "Uber"], ["리프트", "Lyft"],
-    ["메이모빌리티", "May Mobility"], ["모빌아이", "Mobileye"], ["현대차", "현대자동차", "Hyundai"],
+    # ── 로보택시·자율주행 해외 ──
+    ["웨이모", "Waymo"], ["죽스", "주스", "Zoox"], ["크루즈", "Cruise"], ["뉴로", "누로", "Nuro"],
+    ["모셔널", "Motional"], ["메이모빌리티", "메이 모빌리티", "May Mobility"], ["오로라", "Aurora"],
+    ["테슬라", "Tesla"], ["사이버캡", "Cybercab"], ["포니AI", "포니에이아이", "Pony.ai", "Pony AI"],
+    ["위라이드", "WeRide"], ["바이두", "Baidu"], ["아폴로고", "아폴로 고", "Apollo Go"],
+    ["오토엑스", "AutoX"], ["모멘타", "Momenta"], ["웨이브", "Wayve"], ["모빌아이", "Mobileye"],
+    ["엔비디아", "NVIDIA"], ["퀄컴", "Qualcomm"], ["우버", "Uber"], ["리프트", "Lyft"], ["그랩", "Grab"],
+    ["아마존", "Amazon"], ["구글", "Google"], ["알파벳", "Alphabet"],
+    # ── 국내 로보택시·자율주행 ──
+    ["현대차", "현대자동차", "Hyundai"], ["현대모비스", "Hyundai Mobis"], ["기아", "Kia"],
+    ["포티투닷", "42dot", "42닷"], ["카카오모빌리티", "카카오 모빌리티", "Kakao Mobility"],
+    ["쏘카", "SOCAR"], ["오토노머스에이투지", "Autonomous a2z", "에이투지", "a2z"],
+    ["라이드플럭스", "RideFlux"], ["스프링클라우드", "SpringCloud"], ["서울로보틱스", "Seoul Robotics"],
+    ["모라이", "MORAI"], ["마음AI", "Maum AI"], ["네이버랩스", "Naver Labs"], ["만도", "Mando"],
+    ["에스더블유엠", "SWM"], ["에스유엠", "SUM"], ["트리즈", "TRIZ"], ["아우토크립트", "AUTOCRYPT"],
+    ["스트라드비젼", "스트라드비전", "StradVision"], ["토르드라이브", "ThorDrive"], ["에스오에스랩", "SOS LAB"],
+    ["현대오토에버", "Hyundai AutoEver"], ["언맨드솔루션", "Unmanned Solution"], ["마스오토", "MARS Auto"],
+    ["보스턴다이내믹스", "Boston Dynamics"], ["트위니", "twinny"], ["에이스웍스", "Aceworks"],
+    ["베어로보틱스", "Bear Robotics"], ["우아한형제들", "배달의민족", "Woowa Brothers"],
+    ["로커스로보틱스", "Locus Robotics"], ["웨어러블에이아이", "WearableAI"],
+    # ── 레이더·센서 업체 ──
+    ["비트센싱", "Bitsensing"], ["스마트레이더시스템", "SmartRadarSystem", "Smart Radar System"],
+    ["아르베", "Arbe", "Arbe Robotics"], ["콘티넨탈", "Continental"], ["보쉬", "Bosch"],
+    ["앱티브", "Aptiv"], ["발레오", "Valeo"], ["ZF", "지에프"], ["인피니언", "Infineon"],
+    ["NXP", "엔엑스피"], ["텍사스인스트루먼트", "Texas Instruments"], ["루미나", "Luminar"],
+    ["벨로다인", "Velodyne"], ["오우스터", "Ouster"], ["헤사이", "Hesai"], ["라이다", "LiDAR"],
+    ["레이더", "radar"],
+    # ── 일반 용어 ──
     ["로보택시", "로봇택시", "자율주행택시", "자율주행 택시", "robotaxi"],
     ["이미징 레이더", "4D 레이더", "imaging radar", "4D radar"],
-    ["자율주행", "autonomous driving", "self-driving"],
-    ["에이스웍스", "Aceworks"], ["비트센싱", "Bitsensing"],
+    ["자율주행", "autonomous driving", "self-driving"], ["자율주행차", "자율주행 차량", "autonomous vehicle"],
+    ["물류로봇", "물류 로봇", "AMR", "autonomous mobile robot"],
 ]
 
 
@@ -1233,6 +1257,10 @@ def build_html(new_results, all_results, generated_at):
   var hits = [], cur = -1, timer = null;
   var GROUPS = {syn_json};
   var SEL = 'article.card, li.arch, li.bid';
+  function rxFor(v, multi) {{
+    var esc = v.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+    return (multi && /^[a-z0-9]{{1,4}}$/.test(v)) ? new RegExp('(?<![a-z0-9])' + esc + '(?![a-z0-9])') : new RegExp(esc);
+  }}
   function norm(t) {{ return (t || '').toLowerCase().replace(/\\s+/g, ' '); }}
   function variants(q) {{
     // 검색어가 동의어 묶음의 단어와 겹치면(같거나 포함) 그 묶음의 다른 표기도 함께 검색
@@ -1254,15 +1282,16 @@ def build_html(new_results, all_results, generated_at):
       var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize();
     }});
   }}
-  function markIn(el, q) {{
+  function markIn(el, rx) {{
     var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), nodes = [], n;
     while ((n = w.nextNode())) nodes.push(n);
     nodes.forEach(function (t) {{
       if (t.parentNode.closest('mark.shl, script, style')) return;
-      var i = t.nodeValue.toLowerCase().indexOf(q);
-      if (i < 0) return;
+      var mm = rx.exec(t.nodeValue.toLowerCase());
+      if (!mm) return;
+      var i = mm.index, qlen = mm[0].length;
       var mk = document.createElement('mark'); mk.className = 'shl';
-      var rest = t.splitText(i); rest.splitText(q.length); mk.appendChild(rest.cloneNode(true));
+      var rest = t.splitText(i); rest.splitText(qlen); mk.appendChild(rest.cloneNode(true));
       rest.parentNode.replaceChild(mk, rest);
     }});
   }}
@@ -1284,12 +1313,13 @@ def build_html(new_results, all_results, generated_at):
     var q = norm(inp.value).trim(); hits = []; cur = -1;
     if (!q) {{ cnt.textContent = ''; return; }}
     var vars = variants(q);
+    var rxs = vars.map(function (v) {{ return rxFor(v, vars.length > 1); }});
     document.querySelectorAll(SEL).forEach(function (el) {{
       var t = norm(el.textContent);
-      if (vars.some(function (v) {{ return t.indexOf(v) >= 0; }})) hits.push(el);
+      if (rxs.some(function (r) {{ return r.test(t); }})) hits.push(el);
     }});
     if (!hits.length) {{ cnt.textContent = '결과 없음'; cnt.classList.add('snomatch'); return; }}
-    hits.forEach(function (el) {{ vars.forEach(function (v) {{ markIn(el, v); }}); }});
+    hits.forEach(function (el) {{ rxs.forEach(function (r) {{ markIn(el, r); }}); }});
     if (jump) show(0); else cnt.textContent = hits.length + '건';
   }}
   function openBox() {{ box.classList.add('open'); document.getElementById('sbar').classList.add('open'); setTimeout(function () {{ inp.focus(); }}, 120); }}
