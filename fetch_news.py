@@ -1035,6 +1035,36 @@ def build_html(new_results, all_results, generated_at):
   }}
   nav.tabs a:hover {{ background: #f3ecd6; }}
 
+
+  /* 기사 검색: 돋보기 버튼이 눌리면 가로로 늘어나 입력창이 됨 */
+  .searchbar.open {{ position:sticky; top:46px; z-index:9; background:#f6f1e4e6; padding:4px 0; backdrop-filter: blur(6px); }}
+  .searchbar {{ display:flex; align-items:center; gap:8px; margin: 0 0 10px; }}
+  .sbox {{
+    display:flex; align-items:center; height:36px; width:112px; max-width:100%; overflow:hidden;
+    background:#fffdf8; border:1px solid #d8cfb8; border-radius:999px; cursor:pointer;
+    transition: width .3s ease, border-color .2s, box-shadow .2s;
+  }}
+  .sbox:hover {{ background:#f3ecd6; }}
+  .sbox.open {{ width:min(520px, 100%); cursor:text; background:#fffdf8; border-color:var(--blue); box-shadow:0 0 0 3px #2f5da826; }}
+  .sbtn {{ flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:0 8px 0 12px; border:0; background:none;
+    color:var(--blue); font:inherit; font-size:13px; font-weight:600; cursor:inherit; white-space:nowrap; }}
+  .sbtn svg {{ width:16px; height:16px; }}
+  .sbox.open .sbtn span {{ display:none; }}
+  .sinput {{ flex:1 1 auto; min-width:0; width:0; border:0; outline:0; background:none; font:inherit; font-size:14px; color:#2f2b24; padding:0; }}
+  .sinput {{ display:none; }}
+  .sinput::-webkit-search-cancel-button {{ -webkit-appearance:none; display:none; }}
+  .sbox.open .sinput {{ display:block; width:auto; padding-right:6px; }}
+  .scount {{ flex:0 0 auto; font-size:12px; color:var(--muted); white-space:nowrap; padding-right:4px; display:none; }}
+  .sbox.open .scount {{ display:block; }}
+  .snav, .sclose {{ flex:0 0 auto; display:none; border:0; background:none; color:var(--muted); font-size:15px; width:28px; height:28px; border-radius:50%; cursor:pointer; }}
+  .sbox.open .snav, .sbox.open .sclose {{ display:block; }}
+  .snav:hover, .sclose:hover {{ background:#f3ecd6; color:var(--blue); }}
+  .snomatch {{ color:#b45309; }}
+  @keyframes flashhit {{ 0% {{ box-shadow:0 0 0 0 #f2c14e00; background:#fff3c4; }} 30% {{ box-shadow:0 0 0 6px #f2c14e99; background:#ffe9a0; }} 100% {{ box-shadow:0 0 0 0 #f2c14e00; }} }}
+  .hit-flash {{ animation: flashhit 1.4s ease-out 1; }}
+  mark.shl {{ background:#ffe08a; color:inherit; padding:0 1px; border-radius:3px; }}
+  article.card, li.arch, li.bid {{ scroll-margin-top: 130px; }}
+
   details.sec {{ scroll-margin-top: 56px; margin-top: 14px; }}
   .topic-title {{
     list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
@@ -1131,6 +1161,18 @@ def build_html(new_results, all_results, generated_at):
 </header>
 {summary_bar}
 <nav class="tabs">{tabs}</nav>
+<div class="searchbar" id="sbar">
+  <div class="sbox" id="sbox" role="search">
+    <button type="button" class="sbtn" id="sopen" aria-label="기사 검색">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>기사 검색</span>
+    </button>
+    <input class="sinput" id="sinput" type="search" placeholder="제목·요약에서 검색 (Enter: 다음 결과)" autocomplete="off" aria-label="기사 검색어">
+    <span class="scount" id="scount"></span>
+    <button type="button" class="snav" id="sprev" aria-label="이전 결과">▲</button>
+    <button type="button" class="snav" id="snext" aria-label="다음 결과">▼</button>
+    <button type="button" class="sclose" id="sclose" aria-label="검색 닫기">✕</button>
+  </div>
+</div>
 {sections_html}
 <script>
 (function () {{
@@ -1143,6 +1185,66 @@ def build_html(new_results, all_results, generated_at):
   }});
   window.addEventListener('hashchange', function () {{ openFor(location.hash); }});
   openFor(location.hash);
+}})();
+
+(function () {{
+  var box = document.getElementById('sbox'), inp = document.getElementById('sinput'), cnt = document.getElementById('scount');
+  var hits = [], cur = -1, timer = null;
+  var SEL = 'article.card, li.arch, li.bid';
+  function norm(t) {{ return (t || '').toLowerCase().replace(/\\s+/g, ' '); }}
+  function clearMarks() {{
+    document.querySelectorAll('mark.shl').forEach(function (m) {{
+      var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize();
+    }});
+  }}
+  function markIn(el, q) {{
+    var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), nodes = [], n;
+    while ((n = w.nextNode())) nodes.push(n);
+    nodes.forEach(function (t) {{
+      if (t.parentNode.closest('mark.shl, script, style')) return;
+      var i = t.nodeValue.toLowerCase().indexOf(q);
+      if (i < 0) return;
+      var mk = document.createElement('mark'); mk.className = 'shl';
+      var rest = t.splitText(i); rest.splitText(q.length); mk.appendChild(rest.cloneNode(true));
+      rest.parentNode.replaceChild(mk, rest);
+    }});
+  }}
+  function openAncestors(el) {{
+    var d = el.closest('details');
+    while (d) {{ d.open = true; d = d.parentElement && d.parentElement.closest('details'); }}
+  }}
+  function show(i) {{
+    if (!hits.length) return;
+    cur = (i + hits.length) % hits.length;
+    var el = hits[cur];
+    openAncestors(el);
+    el.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+    el.classList.remove('hit-flash'); void el.offsetWidth; el.classList.add('hit-flash');
+    cnt.textContent = (cur + 1) + ' / ' + hits.length; cnt.classList.remove('snomatch');
+  }}
+  function run(jump) {{
+    clearMarks();
+    var q = norm(inp.value).trim(); hits = []; cur = -1;
+    if (!q) {{ cnt.textContent = ''; return; }}
+    document.querySelectorAll(SEL).forEach(function (el) {{
+      if (norm(el.textContent).indexOf(q) >= 0) hits.push(el);
+    }});
+    if (!hits.length) {{ cnt.textContent = '결과 없음'; cnt.classList.add('snomatch'); return; }}
+    hits.forEach(function (el) {{ markIn(el, q); }});
+    if (jump) show(0); else cnt.textContent = hits.length + '건';
+  }}
+  function openBox() {{ box.classList.add('open'); document.getElementById('sbar').classList.add('open'); setTimeout(function () {{ inp.focus(); }}, 120); }}
+  function closeBox() {{ box.classList.remove('open'); document.getElementById('sbar').classList.remove('open'); inp.value = ''; clearMarks(); hits = []; cnt.textContent = ''; }}
+  document.getElementById('sopen').addEventListener('click', function () {{ if (!box.classList.contains('open')) openBox(); }});
+  box.addEventListener('click', function () {{ if (!box.classList.contains('open')) openBox(); }});
+  document.getElementById('sclose').addEventListener('click', function (e) {{ e.stopPropagation(); closeBox(); }});
+  document.getElementById('snext').addEventListener('click', function () {{ show(cur + 1); }});
+  document.getElementById('sprev').addEventListener('click', function () {{ show(cur - 1); }});
+  inp.addEventListener('input', function () {{ clearTimeout(timer); timer = setTimeout(function () {{ run(true); }}, 350); }});
+  inp.addEventListener('keydown', function (e) {{
+    if (e.key === 'Enter') {{ e.preventDefault(); clearTimeout(timer); if (hits.length && cur >= 0) show(e.shiftKey ? cur - 1 : cur + 1); else run(true); }}
+    else if (e.key === 'Escape') {{ closeBox(); }}
+  }});
 }})();
 </script>
 </body>
