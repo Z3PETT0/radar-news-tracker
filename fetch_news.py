@@ -910,7 +910,30 @@ def bids_with_more(bids, new_urls, now):
     return html
 
 
+SEARCH_SYNONYMS = [
+    ["웨이모", "Waymo"], ["테슬라", "Tesla"], ["쏘카", "SOCAR"], ["카카오모빌리티", "Kakao Mobility"],
+    ["포니AI", "Pony.ai", "Pony AI"], ["위라이드", "WeRide"], ["바이두", "Baidu"], ["아폴로고", "Apollo Go"],
+    ["죽스", "Zoox"], ["누로", "Nuro"], ["모셔널", "Motional"], ["우버", "Uber"], ["리프트", "Lyft"],
+    ["메이모빌리티", "May Mobility"], ["모빌아이", "Mobileye"], ["현대차", "현대자동차", "Hyundai"],
+    ["로보택시", "로봇택시", "자율주행택시", "자율주행 택시", "robotaxi"],
+    ["이미징 레이더", "4D 레이더", "imaging radar", "4D radar"],
+    ["자율주행", "autonomous driving", "self-driving"],
+    ["에이스웍스", "Aceworks"], ["비트센싱", "Bitsensing"],
+]
+
+
+def search_synonym_groups():
+    """검색창용 동의어 묶음: 코드 기본값 + 프로필 [검색동의어] (한 줄에 쉼표로 구분)"""
+    groups = [list(g) for g in SEARCH_SYNONYMS]
+    for line in load_profile().get("검색동의어", []):
+        g = [w.strip() for w in line.split(",") if w.strip()]
+        if len(g) >= 2:
+            groups.append(g)
+    return groups
+
+
 def build_html(new_results, all_results, generated_at):
+    syn_json = json.dumps(search_synonym_groups(), ensure_ascii=False).replace("</", "<\\/")
     now = datetime.datetime.now(KST_TZ).replace(tzinfo=None)
 
     # ── 상단 요약 수치 ──
@@ -1041,11 +1064,11 @@ def build_html(new_results, all_results, generated_at):
   .searchbar {{ display:flex; align-items:center; gap:8px; margin: 0 0 10px; }}
   .sbox {{
     display:flex; align-items:center; height:36px; width:112px; max-width:100%; overflow:hidden;
-    background:#fffdf8; border:1px solid #d8cfb8; border-radius:999px; cursor:pointer;
+    background:#fffdf8; border:2px solid #1e4a99; border-radius:999px; cursor:pointer;
     transition: width .3s ease, border-color .2s, box-shadow .2s;
   }}
   .sbox:hover {{ background:#f3ecd6; }}
-  .sbox.open {{ width:min(520px, 100%); cursor:text; background:#fffdf8; border-color:var(--blue); box-shadow:0 0 0 3px #2f5da826; }}
+  .sbox.open {{ width:min(520px, 100%); cursor:text; background:#fffdf8; border-color:#1e4a99; box-shadow:0 0 0 3px #1e4a9933; }}
   .sbtn {{ flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:0 8px 0 12px; border:0; background:none;
     color:var(--blue); font:inherit; font-size:13px; font-weight:600; cursor:inherit; white-space:nowrap; }}
   .sbtn svg {{ width:16px; height:16px; }}
@@ -1190,8 +1213,24 @@ def build_html(new_results, all_results, generated_at):
 (function () {{
   var box = document.getElementById('sbox'), inp = document.getElementById('sinput'), cnt = document.getElementById('scount');
   var hits = [], cur = -1, timer = null;
+  var GROUPS = {syn_json};
   var SEL = 'article.card, li.arch, li.bid';
   function norm(t) {{ return (t || '').toLowerCase().replace(/\\s+/g, ' '); }}
+  function variants(q) {{
+    // 검색어가 동의어 묶음의 단어와 겹치면(같거나 포함) 그 묶음의 다른 표기도 함께 검색
+    var out = [q];
+    GROUPS.forEach(function (g) {{
+      var low = g.map(norm);
+      low.forEach(function (t, i) {{
+        if (t === q || (q.length >= 2 && t.indexOf(q) === 0)) {{
+          low.forEach(function (o) {{ if (out.indexOf(o) < 0) out.push(o); }});
+        }} else if (t.length >= 2 && q.indexOf(t) >= 0 && q !== t) {{
+          low.forEach(function (o) {{ var v = q.replace(t, o); if (out.indexOf(v) < 0) out.push(v); }});
+        }}
+      }});
+    }});
+    return out;
+  }}
   function clearMarks() {{
     document.querySelectorAll('mark.shl').forEach(function (m) {{
       var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize();
@@ -1226,11 +1265,13 @@ def build_html(new_results, all_results, generated_at):
     clearMarks();
     var q = norm(inp.value).trim(); hits = []; cur = -1;
     if (!q) {{ cnt.textContent = ''; return; }}
+    var vars = variants(q);
     document.querySelectorAll(SEL).forEach(function (el) {{
-      if (norm(el.textContent).indexOf(q) >= 0) hits.push(el);
+      var t = norm(el.textContent);
+      if (vars.some(function (v) {{ return t.indexOf(v) >= 0; }})) hits.push(el);
     }});
     if (!hits.length) {{ cnt.textContent = '결과 없음'; cnt.classList.add('snomatch'); return; }}
-    hits.forEach(function (el) {{ markIn(el, q); }});
+    hits.forEach(function (el) {{ vars.forEach(function (v) {{ markIn(el, v); }}); }});
     if (jump) show(0); else cnt.textContent = hits.length + '건';
   }}
   function openBox() {{ box.classList.add('open'); document.getElementById('sbar').classList.add('open'); setTimeout(function () {{ inp.focus(); }}, 120); }}
