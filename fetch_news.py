@@ -1088,6 +1088,16 @@ def build_html(new_results, all_results, generated_at):
   mark.shl {{ background:#ffe08a; color:inherit; padding:0 1px; border-radius:3px; }}
   article.card, li.arch, li.bid {{ scroll-margin-top: 130px; }}
 
+  /* 오른쪽 고정 이동 버튼 */
+  .jump {{ position:fixed; right:16px; bottom:24px; z-index:20; display:flex; flex-direction:column; gap:8px; }}
+  .jump button {{
+    width:46px; height:46px; border-radius:50%; border:2px solid #1e4a99; background:#fffdf8; color:#1e4a99;
+    font:inherit; font-size:11px; font-weight:800; letter-spacing:.02em; cursor:pointer;
+    box-shadow:0 2px 8px #0000001f; transition: background .15s, color .15s, transform .15s;
+  }}
+  .jump button:hover {{ background:#1e4a99; color:#fff; transform:translateY(-1px); }}
+  @media (max-width: 600px) {{ .jump {{ right:10px; bottom:16px; }} .jump button {{ width:42px; height:42px; }} }}
+
   details.sec {{ scroll-margin-top: 56px; margin-top: 14px; }}
   .topic-title {{
     list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
@@ -1197,6 +1207,10 @@ def build_html(new_results, all_results, generated_at):
   </div>
 </div>
 {sections_html}
+<div class="jump" aria-label="페이지 이동">
+  <button type="button" id="jup" aria-label="맨 위로">UP</button>
+  <button type="button" id="jdown" aria-label="맨 아래로">DOWN</button>
+</div>
 <script>
 (function () {{
   function openFor(h) {{
@@ -1287,6 +1301,11 @@ def build_html(new_results, all_results, generated_at):
     else if (e.key === 'Escape') {{ closeBox(); }}
   }});
 }})();
+
+document.getElementById('jup').addEventListener('click', function () {{ window.scrollTo({{ top: 0, behavior: 'smooth' }}); }});
+document.getElementById('jdown').addEventListener('click', function () {{
+  window.scrollTo({{ top: document.documentElement.scrollHeight, behavior: 'smooth' }});
+}});
 </script>
 </body>
 </html>
