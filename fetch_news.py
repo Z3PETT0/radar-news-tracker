@@ -742,8 +742,18 @@ GENERIC_TOKENS = {
     "자율주행", "자율주행차", "자율주행차량", "로보택시", "로봇택시", "자율주행택시", "정부", "국책", "국가", "과제", "사업", "실증",
     "기술", "개발", "참여", "선정", "추진", "확대", "도입", "구축", "공모", "지원", "연구", "플랫폼", "스타트업", "투자",
     "레이더", "라이다", "센서", "로봇", "물류", "AMR", "AI", "국토교통부", "산업통상부", "과학기술정보통신부", "해양수산부",
+    # 영문 일반어(제목에 흔해서 같은 소식 판단에 쓰면 안 됨)
+    "the", "for", "and", "with", "from", "its", "new", "how", "why", "what", "can", "will", "to", "of", "in", "on",
+    "at", "by", "as", "is", "are", "after", "into", "over", "more", "than", "this", "that", "has", "have", "says",
+    "say", "plans", "plan", "race", "service", "services", "launch", "launches", "expands", "expand", "report",
+    "robotaxi", "robotaxis", "taxi", "taxis", "autonomous", "self", "driving", "car", "cars", "vehicle", "vehicles",
+    "ride", "rides", "market", "year", "city", "company", "ai", "tech", "news", "first", "next", "deal", "partner",
+    "partnership", "gets", "get", "now", "us", "china", "chinese", "american", "global",
     "한국", "서울", "부산", "대전", "대구", "인천", "경기", "제주", "전남", "경남", "경북", "충남", "충북", "전북", "강원",
 }
+
+
+GENERIC_LOWER = {w.lower() for w in GENERIC_TOKENS}
 
 
 def _same_story(a, b):
@@ -762,7 +772,7 @@ def _same_story(a, b):
     sa, sb = set(ta), set(tb)
     if len(sa & sb) / len(sa | sb) >= 0.5:
         return True
-    shared = {w for w in sa & sb if w not in GENERIC_TOKENS}
+    shared = {w for w in sa & sb if w.lower() not in GENERIC_LOWER and not re.fullmatch(r"(19|20)\d\d", w)}
     return len(shared) >= 2 and any(len(w) >= 3 for w in shared)
 
 
@@ -1304,6 +1314,7 @@ def build_html(new_results, all_results, generated_at):
     cur = (i + hits.length) % hits.length;
     var el = hits[cur];
     openAncestors(el);
+    el.querySelectorAll('details.dups').forEach(function (d) {{ if (d.querySelector('mark.shl')) d.open = true; }});
     el.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
     el.classList.remove('hit-flash'); void el.offsetWidth; el.classList.add('hit-flash');
     cnt.textContent = (cur + 1) + ' / ' + hits.length; cnt.classList.remove('snomatch');
